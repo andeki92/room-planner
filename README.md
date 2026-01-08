@@ -14,24 +14,28 @@ OpenTile Mobile brings professional CAD-quality renovation planning to iOS and A
 ## ✨ Key Features
 
 ### 🎨 Touch-First CAD Drawing
+
 - **Natural Drawing:** Optimized for fingers and Apple Pencil/S Pen
 - **Smart Snapping:** Automatic snap to grid, vertices, perpendicular lines
 - **Multi-Touch Gestures:** Pinch-zoom, pan, rotate with fluid 60 FPS performance
 - **Undo/Redo:** Three-finger swipe for quick undo/redo
 
 ### 🏗️ Professional Floor Plans
+
 - **Auto Room Detection:** Halfedge mesh topology (BREP) for stable room identities
 - **Parametric History:** Edit past operations, everything downstream recalculates
 - **Building Code Validation:** Automatic IRC/IBC compliance checking
 - **Constraints:** Parallel, perpendicular, distance constraints with auto-inference
 
 ### 🔲 Tile Layout Optimization
+
 - **Minimize Waste:** AI-optimized starting positions (10-20% savings)
 - **Multiple Patterns:** Straight, diagonal, running bond, herringbone, chevron
 - **Live Preview:** See tile overlay on floor plan in real-time
 - **Cut Lists:** Detailed cutting instructions for installers
 
 ### 💰 Instant Quotes
+
 - **Material Estimates:** Accurate quantities within 5% of actual usage
 - **Labor Calculation:** Area-based with complexity adjustments
 - **PDF Export:** Professional quotes via iOS/Android share sheet
@@ -42,6 +46,7 @@ OpenTile Mobile brings professional CAD-quality renovation planning to iOS and A
 OpenTile Mobile uses **industry-proven architectural patterns** adapted from the desktop version:
 
 ### Event-Driven Architecture (Kotlin Flows)
+
 ```
 User Touch → Tool emits Event → Event Bus → Systems React → UI Updates
 ```
@@ -51,6 +56,7 @@ User Touch → Tool emits Event → Event Bus → Systems React → UI Updates
 - **Undo/Redo:** Replay event history
 
 ### Mode-Based UI (Sealed Classes)
+
 ```kotlin
 sealed interface AppMode {
     data object FloorPlan
@@ -64,6 +70,7 @@ sealed interface AppMode {
 - **Type-Safe:** Compile-time guarantees for navigation
 
 ### BREP Topology (Halfedge Mesh)
+
 ```
 Vertex → HalfEdge → Face (Room)
 ```
@@ -73,6 +80,7 @@ Vertex → HalfEdge → Face (Room)
 - **Professional Standard:** Used in CAD systems worldwide
 
 ### Immutable State (Data Classes)
+
 ```kotlin
 data class AppState(
     val vertices: Map<String, Vertex>,
@@ -87,15 +95,15 @@ data class AppState(
 
 ## 🛠️ Technology Stack
 
-| Component | Technology | Why |
-|-----------|-----------|-----|
-| **Language** | Kotlin 2.2.0+ | Latest stable, K2 compiler, shared iOS/Android code |
-| **UI Framework** | Compose Multiplatform 1.8.0+ | Declarative UI, iOS stable (May 2025), Skia rendering |
-| **Rendering** | Skiko (Skia) | Hardware-accelerated 2D (Metal on iOS, OpenGL on Android) |
-| **State** | Kotlin Flows + StateFlow | Reactive, coroutine-native |
-| **Serialization** | kotlinx.serialization | Type-safe, multiplatform |
-| **DI** | Koin | Simple, KMP-compatible |
-| **Logging** | Kermit | Multiplatform logging |
+| Component         | Technology                   | Why                                                       |
+| ----------------- | ---------------------------- | --------------------------------------------------------- |
+| **Language**      | Kotlin 2.2.0+                | Latest stable, K2 compiler, shared iOS/Android code       |
+| **UI Framework**  | Compose Multiplatform 1.8.0+ | Declarative UI, iOS stable (May 2025), Skia rendering     |
+| **Rendering**     | Skiko (Skia)                 | Hardware-accelerated 2D (Metal on iOS, OpenGL on Android) |
+| **State**         | Kotlin Flows + StateFlow     | Reactive, coroutine-native                                |
+| **Serialization** | kotlinx.serialization        | Type-safe, multiplatform                                  |
+| **DI**            | Koin                         | Simple, KMP-compatible                                    |
+| **Logging**       | Kermit                       | Multiplatform logging                                     |
 
 ### Why Kotlin Multiplatform?
 
@@ -135,6 +143,7 @@ opentile-mobile/
 ### Setup (Automated with mise + lefthook)
 
 **Step 1: Install mise** (version manager)
+
 ```bash
 # macOS
 brew install mise
@@ -147,6 +156,7 @@ eval "$(mise activate zsh)"  # or bash
 ```
 
 **Step 2: Install project tools**
+
 ```bash
 cd opentile-mobile
 
@@ -158,6 +168,7 @@ mise list
 ```
 
 **Step 3: Install lefthook** (Git hooks)
+
 ```bash
 # Install lefthook
 brew install lefthook  # or: mise use -g lefthook
@@ -166,17 +177,8 @@ brew install lefthook  # or: mise use -g lefthook
 lefthook install
 ```
 
-**Step 4: Setup project**
-```bash
-# Run initial setup
-mise run setup
+**Step 4: First build**
 
-# Verify everything works
-mise run lint
-mise run test
-```
-
-**Step 5: First build**
 ```bash
 # Android
 ./gradlew :androidApp:installDebug
@@ -201,61 +203,65 @@ xcodebuild test -workspace iosApp.xcworkspace -scheme iosApp -destination 'platf
 
 ## 📖 Documentation
 
-- **[spec-mobile.md](spec-mobile.md)** - Complete technical specification
+- **[spec.md](spec.md)** - Complete technical specification
 - **[.claude/CLAUDE.md](.claude/CLAUDE.md)** - Development guidelines
 - **[.claude/plans/](.claude/plans/)** - Phase-by-phase implementation plans
 
 ## 🛣️ Roadmap
 
 ### Phase 0: Foundation (Weeks 1-2) ← **Current Phase**
+
 - [x] Project structure setup
 - [ ] Mode system (sealed classes)
 - [ ] Event bus (Flows)
 - [ ] Basic Compose UI
 
 ### Phase 1: Drawing Mode (Weeks 3-5)
+
 - [ ] Touch gesture detection
 - [ ] Smart snapping system
 - [ ] Drawing canvas (Skia)
 - [ ] Wall/door/window tools
 
 ### Phase 2: Topology & BREP (Weeks 6-7)
+
 - [ ] Halfedge mesh implementation
 - [ ] Automatic room detection
 - [ ] Room labeling
 
 ### Phase 3: Command Pattern (Weeks 8-9)
+
 - [ ] Undo/redo system
 - [ ] Feature tree
 - [ ] Parametric history
 
 ### Phase 4: Material Planning (Weeks 10-13)
+
 - [ ] Tile layout optimizer
 - [ ] Live preview
 - [ ] Cut list generation
 
 ### Phase 5-9: Constraints, Validation, Estimation, Polish
-- See [spec-mobile.md § 8](spec-mobile.md#8-implementation-roadmap) for full roadmap
+
+- See [spec.md § 8](spec.md#8-implementation-roadmap) for full roadmap
 
 **MVP Target:** End of Phase 7 (Week 19)
 
 ## 🎯 Success Metrics
 
 **Technical:**
+
 - ✅ 60 FPS with 1000+ entities
 - ✅ < 1 second tile optimization
 - ✅ < 16ms touch latency
 - ✅ 5% material estimate accuracy
 
 **Business:**
+
 - 🎯 < 15 minutes for on-site bathroom quote
 - 🎯 10-15% waste reduction
 - 🎯 90%+ code violations caught
 - 🎯 Contractors willing to pay subscription
-
-## 🤝 Contributing
-
-This is a private project. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## 📄 License
 
@@ -264,5 +270,3 @@ Proprietary - All Rights Reserved
 ---
 
 **Built with ❤️ using Kotlin Multiplatform & Compose Multiplatform**
-
-*Based on OpenTile Desktop (Bevy/Rust) - Adapted for mobile*

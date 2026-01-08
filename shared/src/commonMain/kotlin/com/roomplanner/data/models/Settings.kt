@@ -1,5 +1,7 @@
 package com.roomplanner.data.models
 
+import com.roomplanner.common.getSystemLanguage
+import com.roomplanner.localization.AppLanguage
 import kotlinx.serialization.Serializable
 
 /**
@@ -7,7 +9,8 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class Settings(
-    val measurementUnits: MeasurementUnits = MeasurementUnits.IMPERIAL
+    val measurementUnits: MeasurementUnits = MeasurementUnits.IMPERIAL,
+    val language: AppLanguage = getSystemLanguage(),
 ) {
     companion object {
         fun default() = Settings()
@@ -16,6 +19,6 @@ data class Settings(
 
 @Serializable
 enum class MeasurementUnits {
-    IMPERIAL,  // feet, inches
-    METRIC     // meters, centimeters
+    IMPERIAL, // feet, inches
+    METRIC, // meters, centimeters
 }

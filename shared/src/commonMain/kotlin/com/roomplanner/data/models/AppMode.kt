@@ -23,7 +23,9 @@ sealed interface AppMode {
      * Floor Plan Mode: CAD drawing (Phase 1+ implementation)
      */
     @Serializable
-    data class FloorPlan(val projectId: String) : AppMode
+    data class FloorPlan(
+        val projectId: String,
+    ) : AppMode
 
     /**
      * Settings: User preferences (units, theme, etc.)

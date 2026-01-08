@@ -14,7 +14,7 @@ data class Project(
     val id: String,
     val name: String,
     val createdAt: Instant,
-    val modifiedAt: Instant
+    val modifiedAt: Instant,
 ) {
     companion object {
         /**
@@ -26,7 +26,7 @@ data class Project(
                 id = generateUUID(),
                 name = name,
                 createdAt = now,
-                modifiedAt = now
+                modifiedAt = now,
             )
         }
     }

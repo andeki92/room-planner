@@ -28,6 +28,22 @@ allprojects {
         version.set("1.5.0")
         android.set(true)
         outputColorName.set("RED")
+
+        // Exclude generated files (research-based solution from GitHub Issue #751)
+        filter {
+            // Exclude all build directories (cross-platform: Unix / and Windows \)
+            exclude { element ->
+                val path = element.file.path
+                path.contains("/build/") || path.contains("\\build\\")
+            }
+            // Specifically exclude Compose Multiplatform resource generator
+            exclude { element ->
+                val path = element.file.path
+                path.contains("resourceGenerator") || path.contains("composeResClass")
+            }
+            // Include only actual source files
+            include("**/src/**/*.kt")
+        }
     }
 }
 

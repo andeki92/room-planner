@@ -12,27 +12,29 @@ import co.touchlab.kermit.Logger
 import com.roomplanner.data.models.AppMode
 import com.roomplanner.data.models.Project
 import com.roomplanner.data.storage.FileStorage
+import com.roomplanner.localization.strings
 import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FloorPlanScreen(
     projectId: String,
-    onNavigate: (AppMode) -> Unit
+    onNavigate: (AppMode) -> Unit,
 ) {
     val fileStorage: FileStorage = koinInject()
+    val strings = strings()
 
     var project by remember { mutableStateOf<Project?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
     // Load project
     LaunchedEffect(projectId) {
-        fileStorage.loadProject(projectId)
+        fileStorage
+            .loadProject(projectId)
             .onSuccess {
                 project = it
                 Logger.i { "✓ Project loaded: ${it.name}" }
-            }
-            .onFailure {
+            }.onFailure {
                 Logger.e { "✗ Failed to load project: ${it.message}" }
             }
         isLoading = false
@@ -41,37 +43,41 @@ fun FloorPlanScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(project?.name ?: "Loading...") },
+                title = { Text(project?.name ?: strings.loadingProject) },
                 navigationIcon = {
                     IconButton(onClick = { onNavigate(AppMode.ProjectBrowser) }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = strings.backButton,
+                        )
                     }
-                }
+                },
             )
-        }
+        },
     ) { paddingValues ->
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues),
-            contentAlignment = Alignment.Center
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+            contentAlignment = Alignment.Center,
         ) {
             if (isLoading) {
                 CircularProgressIndicator()
             } else {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = "Floor Plan Mode",
-                        style = MaterialTheme.typography.headlineMedium
+                        text = strings.floorPlanMode,
+                        style = MaterialTheme.typography.headlineMedium,
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Drawing canvas implementation coming in Phase 1",
+                        text = strings.drawingCanvasComingSoon,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

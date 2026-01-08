@@ -14,31 +14,3 @@ node = "22.12.0"
 [env]
 # Gradle options for better performance
 GRADLE_OPTS = "-Xmx4g -XX:+UseParallelGC"
-
-[tasks]
-# Custom tasks (run with: mise run <task>)
-
-[tasks.setup]
-description = "Initial project setup"
-run = """
-  echo "Setting up OpenTile Mobile..."
-  ./gradlew --version
-  ./gradlew tasks
-  echo "✓ Setup complete! Run './gradlew :androidApp:installDebug' to build Android."
-"""
-
-[tasks.clean]
-description = "Clean all build artifacts"
-run = "./gradlew clean"
-
-[tasks.test]
-description = "Run all tests"
-run = "./gradlew test"
-
-[tasks.lint]
-description = "Run ktlint and detekt"
-run = "./gradlew ktlintCheck detekt"
-
-[tasks.format]
-description = "Auto-format code with ktlint"
-run = "./gradlew ktlintFormat"

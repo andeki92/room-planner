@@ -16,6 +16,7 @@ import com.roomplanner.data.StateManager
 import com.roomplanner.data.events.EventBus
 import com.roomplanner.data.events.NavigationEvent
 import com.roomplanner.data.models.AppMode
+import com.roomplanner.localization.LocalizationProvider
 import com.roomplanner.ui.screens.FloorPlanScreen
 import com.roomplanner.ui.screens.ProjectBrowserScreen
 import com.roomplanner.ui.screens.SettingsScreen
@@ -42,43 +43,45 @@ fun App() {
     }
 
     MaterialTheme {
-        AnimatedContent(
-            targetState = appState.currentMode,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(300)) togetherWith
-                    fadeOut(animationSpec = tween(300))
-            }
-        ) { mode ->
-            when (mode) {
-                is AppMode.ProjectBrowser -> {
-                    ProjectBrowserScreen(
-                        onNavigate = { newMode ->
-                            scope.launch {
-                                eventBus.emit(NavigationEvent.ModeChanged(newMode))
-                            }
-                        }
-                    )
-                }
+        LocalizationProvider {
+            AnimatedContent(
+                targetState = appState.currentMode,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(300)) togetherWith
+                        fadeOut(animationSpec = tween(300))
+                },
+            ) { mode ->
+                when (mode) {
+                    is AppMode.ProjectBrowser -> {
+                        ProjectBrowserScreen(
+                            onNavigate = { newMode ->
+                                scope.launch {
+                                    eventBus.emit(NavigationEvent.ModeChanged(newMode))
+                                }
+                            },
+                        )
+                    }
 
-                is AppMode.FloorPlan -> {
-                    FloorPlanScreen(
-                        projectId = mode.projectId,
-                        onNavigate = { newMode ->
-                            scope.launch {
-                                eventBus.emit(NavigationEvent.ModeChanged(newMode))
-                            }
-                        }
-                    )
-                }
+                    is AppMode.FloorPlan -> {
+                        FloorPlanScreen(
+                            projectId = mode.projectId,
+                            onNavigate = { newMode ->
+                                scope.launch {
+                                    eventBus.emit(NavigationEvent.ModeChanged(newMode))
+                                }
+                            },
+                        )
+                    }
 
-                is AppMode.Settings -> {
-                    SettingsScreen(
-                        onNavigate = { newMode ->
-                            scope.launch {
-                                eventBus.emit(NavigationEvent.ModeChanged(newMode))
-                            }
-                        }
-                    )
+                    is AppMode.Settings -> {
+                        SettingsScreen(
+                            onNavigate = { newMode ->
+                                scope.launch {
+                                    eventBus.emit(NavigationEvent.ModeChanged(newMode))
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }

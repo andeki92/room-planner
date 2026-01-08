@@ -22,11 +22,12 @@ import kotlinx.coroutines.flow.asSharedFlow
  * ```
  */
 class EventBus {
-    private val _events = MutableSharedFlow<AppEvent>(
-        replay = 0,                    // Don't replay past events
-        extraBufferCapacity = 64,      // Buffer 64 events before dropping
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
+    private val _events =
+        MutableSharedFlow<AppEvent>(
+            replay = 0, // Don't replay past events
+            extraBufferCapacity = 64, // Buffer 64 events before dropping
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        )
 
     val events: SharedFlow<AppEvent> = _events.asSharedFlow()
 

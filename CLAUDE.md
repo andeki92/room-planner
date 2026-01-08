@@ -12,11 +12,13 @@
 ## 📋 Quick Reference
 
 ### Authoritative Documents
-1. **[spec-mobile.md](../spec-mobile.md)** - Complete technical specification (READ THIS FIRST)
+
+1. **[spec.md](../spec.md)** - Complete technical specification (READ THIS FIRST)
 2. **[README.md](../README.md)** - Project overview and status
-3. **[Implementation Roadmap](../spec-mobile.md#8-implementation-roadmap)** - Phase-by-phase plan
+3. **[Implementation Roadmap](../spec.md#8-implementation-roadmap)** - Phase-by-phase plan
 
 ### Key Architecture Patterns
+
 - **Event-Driven:** Tools emit events via Kotlin Flows → Systems react (never mutate directly)
 - **Mode-Based:** Sealed classes for AppMode (FloorPlan, MaterialPlanning, Utilities, etc.)
 - **Feature Tree:** Parametric history (like OnShape) - rollback, edit, recalculate
@@ -27,15 +29,18 @@
 
 ## 🎯 Core Development Principles
 
-### 1. **ALWAYS Follow spec-mobile.md**
+### 1. **ALWAYS Follow spec.md**
+
 The spec is the source of truth. Before implementing any feature:
-1. Read the relevant section in spec-mobile.md
+
+1. Read the relevant section in spec.md
 2. Follow the architectural patterns defined there
 3. If pattern unclear, ask user before deviating
 
 ### 2. **Event-Driven Architecture (CRITICAL)**
 
 **❌ WRONG: Direct state mutation**
+
 ```kotlin
 fun onTap(position: Offset, state: MutableState<AppState>) {
     // WRONG: Directly mutating state
@@ -46,6 +51,7 @@ fun onTap(position: Offset, state: MutableState<AppState>) {
 ```
 
 **✅ CORRECT: Event-driven with Flows**
+
 ```kotlin
 // Tool emits events
 class WallToolViewModel(private val eventBus: EventBus) {
@@ -150,6 +156,7 @@ class FeatureTree {
 ### 5. **Component Design (Immutable Data Classes)**
 
 **Topology components (BREP):**
+
 ```kotlin
 @Serializable
 data class Vertex(
@@ -171,6 +178,7 @@ data class HalfEdge(
 ```
 
 **Building components:**
+
 ```kotlin
 @Serializable
 data class Wall(
@@ -200,6 +208,7 @@ data class Point2(
 ### 7. **Testing Requirements**
 
 Every module needs:
+
 - **Unit tests** for pure functions (geometry operations) in `commonTest`
 - **Integration tests** for event flows
 - **UI tests** for Compose screens (androidInstrumentedTest / iosTest)
@@ -240,12 +249,14 @@ System.out.println("Error")    // Don't use
 ```
 
 **Log levels:**
+
 - `Logger.i` - Standard operational messages (mode changes, feature creation, system initialization)
 - `Logger.w` - Warnings, validation failures, non-fatal errors
 - `Logger.d` - Verbose debugging info (can be filtered)
 - `Logger.e` - Fatal errors, exceptions, critical failures
 
 **Formatting conventions:**
+
 - Use `✓` prefix for success: `Logger.i { "✓ Feature initialized" }`
 - Use `⚠` prefix for warnings: `Logger.w { "⚠ Code violation detected" }`
 - Use `✗` prefix for errors: `Logger.e { "✗ Failed to load: $path" }`
@@ -253,6 +264,7 @@ System.out.println("Error")    // Don't use
 - Use `━━━` for section dividers in multi-line logs
 
 **Example startup logging:**
+
 ```kotlin
 fun initApp() {
     Logger.i { "✓ Phase 0.1: AppMode state system initialized" }
@@ -263,11 +275,133 @@ fun initApp() {
 }
 ```
 
+### 9. **Internationalization (i18n) - Compile-Time Safe (CRITICAL)**
+
+**ALWAYS use the compile-time safe localization system for all user-facing text:**
+
+#### Pattern Overview
+
+The app uses an interface-based system that **guarantees compile-time safety**:
+- Missing translations = compilation errors
+- Type-safe string access (no string keys)
+- Formatted strings with type-safe placeholders
+- Reactive language switching (automatic UI updates)
+
+#### Adding New Strings
+
+**Step 1: Add to Strings interface**
+
+```kotlin
+// shared/src/commonMain/kotlin/com/roomplanner/localization/Strings.kt
+interface Strings {
+    // Existing strings...
+    val myNewString: String  // NEW
+}
+```
+
+**Step 2: Compiler WILL fail until implemented**
+
+```
+Kotlin: Class 'EnglishStrings' is not abstract and does not implement
+abstract member 'myNewString' declared in Strings
+
+Kotlin: Class 'NorwegianStrings' is not abstract and does not implement
+abstract member 'myNewString' declared in Strings
+```
+
+**Step 3: Implement in ALL languages**
+
+```kotlin
+// EnglishStrings.kt
+object EnglishStrings : Strings {
+    override val myNewString = "My String"
+    // ... all other strings
+}
+
+// NorwegianStrings.kt
+object NorwegianStrings : Strings {
+    override val myNewString = "Min streng"
+    // ... all other strings
+}
+```
+
+**Step 4: Use in UI**
+
+```kotlin
+@Composable
+fun MyScreen() {
+    val strings = strings()  // Get localized strings
+    Text(strings.myNewString)
+}
+```
+
+#### Formatted Strings (with placeholders)
+
+For strings with dynamic content, use **functions** instead of properties:
+
+```kotlin
+// ✅ CORRECT: Function with type-safe parameters
+interface Strings {
+    fun deleteProjectMessage(projectName: String): String
+    fun itemCount(count: Int): String
+}
+
+// Implementation
+object EnglishStrings : Strings {
+    override fun deleteProjectMessage(projectName: String) =
+        "This will permanently delete \"$projectName\". This cannot be undone."
+    override fun itemCount(count: Int) = "$count items"
+}
+
+// Usage
+val strings = strings()
+Text(strings.deleteProjectMessage("Kitchen"))  // Type-safe!
+Text(strings.itemCount(5))
+```
+
+#### ❌ Common Mistakes
+
+```kotlin
+// ❌ WRONG: Hardcoded string
+Text("Delete Project")
+
+// ❌ WRONG: String key lookup
+Text(getString("delete_project"))
+
+// ✅ CORRECT: Type-safe property access
+val strings = strings()
+Text(strings.deleteButton)
+```
+
+#### Current Languages
+
+- **English** (default): `EnglishStrings`
+- **Norwegian (Bokmål)**: `NorwegianStrings`
+
+#### Why This Pattern?
+
+1. **Compile-time safety**: Impossible to ship with missing translations
+2. **Type-safe**: `strings.appTitle` vs `getString("app_title")` (typo-prone)
+3. **IDE support**: Autocomplete, refactoring, find usages
+4. **Zero runtime overhead**: Direct property access (no HashMap lookups)
+5. **Reactive**: Language changes automatically update entire UI
+
+#### File Locations
+
+- `shared/src/commonMain/kotlin/com/roomplanner/localization/Strings.kt` - Interface contract
+- `shared/src/commonMain/kotlin/com/roomplanner/localization/EnglishStrings.kt` - English
+- `shared/src/commonMain/kotlin/com/roomplanner/localization/NorwegianStrings.kt` - Norwegian
+- `shared/src/commonMain/kotlin/com/roomplanner/localization/AppLanguage.kt` - Enum
+- `shared/src/commonMain/kotlin/com/roomplanner/localization/LocalizationProvider.kt` - Compose integration
+
+**CRITICAL**: Never skip the Strings interface. All new user-facing text MUST be added to the interface first, then implemented in ALL languages, or the code will not compile.
+
 ---
 
 ## 🔧 Technology Stack & Versions
 
 ### Required Versions
+
 - **Kotlin:** 2.2.0+ (latest stable)
 - **Compose Multiplatform:** 1.8.0+ (iOS stable)
 - **Gradle:** 8.7.3+
@@ -364,6 +498,7 @@ android {
 ### Compose Multiplatform 1.8.0+ Features We Use
 
 #### 1. **Skia Rendering (Built-in)**
+
 Hardware-accelerated via Metal (iOS) / OpenGL (Android):
 
 ```kotlin
@@ -382,6 +517,7 @@ fun DrawingCanvas(state: AppState) {
 ```
 
 #### 2. **DrawWithCache for Performance**
+
 Avoid reallocating objects:
 
 ```kotlin
@@ -402,6 +538,7 @@ Canvas(modifier = Modifier.fillMaxSize()) {
 ```
 
 #### 3. **Kotlin Flows for State**
+
 Reactive state management:
 
 ```kotlin
@@ -424,6 +561,7 @@ fun FloorPlanScreen(stateManager: StateManager) {
 ```
 
 #### 4. **Gesture Detection (Touch-Optimized)**
+
 Multi-touch gestures:
 
 ```kotlin
@@ -452,6 +590,7 @@ Canvas(
 ```
 
 #### 5. **AnimatedContent for Mode Transitions**
+
 Smooth transitions between modes:
 
 ```kotlin
@@ -470,6 +609,7 @@ AnimatedContent(
 ```
 
 #### 6. **expect/actual for Platform-Specific Code**
+
 Platform abstractions:
 
 ```kotlin
@@ -496,6 +636,7 @@ actual class ApplePencilHandler {
 ### KMP-Specific Patterns
 
 **Shared Event Bus (Kotlin Flows):**
+
 ```kotlin
 // shared/commonMain/kotlin/com/opentile/data/events/EventBus.kt
 
@@ -518,6 +659,7 @@ eventBus.events
 ```
 
 **Immutable State with Data Classes:**
+
 ```kotlin
 @Serializable
 data class AppState(
@@ -538,6 +680,7 @@ data class AppState(
 ```
 
 **Multiplatform UUID Generation:**
+
 ```kotlin
 // shared/commonMain/kotlin/com/opentile/common/UUID.kt
 
@@ -612,6 +755,7 @@ opentile-mobile/
 ```
 
 ### Module Dependencies (Allowed)
+
 - **commonMain** depends on nothing (pure Kotlin + KMP stdlib)
 - **iosMain** depends on commonMain + iOS platform APIs
 - **androidMain** depends on commonMain + Android platform APIs
@@ -625,6 +769,7 @@ opentile-mobile/
 Before marking implementation complete, verify:
 
 **Tooling & Setup:**
+
 - [ ] **mise.toml:** Tool versions defined (Java 17, Gradle 8.10.2, Node 22) ⚠️ CRITICAL
 - [ ] **lefthook.yml:** Git hooks configured (ktlint, detekt, tests) ⚠️ CRITICAL
 - [ ] **libs.versions.toml:** All dependencies in version catalog ⚠️ CRITICAL
@@ -633,6 +778,7 @@ Before marking implementation complete, verify:
 - [ ] **lefthook install:** Git hooks initialized
 
 **Architecture & Code:**
+
 - [ ] **Kotlin 2.2.0+:** Using latest stable
 - [ ] **Compose Multiplatform 1.8.0+:** iOS stable version
 - [ ] **Events not direct mutations:** Tools emit events, systems mutate
@@ -645,12 +791,13 @@ Before marking implementation complete, verify:
 - [ ] **Kermit logging:** ALWAYS use Logger.i/w/d/e (NOT println()) ⚠️ CRITICAL
 - [ ] **Plans:** Use local `.claude/plans/` folder (NOT global) ⚠️ CRITICAL
 - [ ] **Tests included:** Unit tests (commonTest), UI tests (platform-specific)
-- [ ] **Follows spec-mobile.md:** Implementation matches specification
+- [ ] **Follows spec.md:** Implementation matches specification
 - [ ] **expect/actual for platform code:** Use for iOS/Android differences
 - [ ] **Serializable data classes:** Use @Serializable for all state models
 - [ ] **No TODOs in production code:** Resolve or document as issues
 
 **Code Quality:**
+
 - [ ] **ktlint:** Passes `./gradlew ktlintCheck` ⚠️ CRITICAL
 - [ ] **detekt:** Passes `./gradlew detekt` ⚠️ CRITICAL
 - [ ] **Tests:** All tests pass `./gradlew test`
@@ -661,7 +808,9 @@ Before marking implementation complete, verify:
 ## 🐛 Common Mistakes to Avoid
 
 ### ❌ Mistake 1: Not Using Flows for Events
+
 **Wrong:**
+
 ```kotlin
 class GeometryManager {
     fun handleTap(position: Offset) {
@@ -670,7 +819,9 @@ class GeometryManager {
     }
 }
 ```
+
 **Right:**
+
 ```kotlin
 class GeometryManager(private val eventBus: EventBus) {
     init {
@@ -683,13 +834,17 @@ class GeometryManager(private val eventBus: EventBus) {
 ```
 
 ### ❌ Mistake 2: Direct State Mutation
+
 **Wrong:**
+
 ```kotlin
 fun addVertex(vertex: Vertex) {
     state.vertices[vertex.id] = vertex  // Mutable!
 }
 ```
+
 **Right:**
+
 ```kotlin
 fun addVertex(vertex: Vertex) {
     stateManager.updateState { state ->
@@ -699,14 +854,18 @@ fun addVertex(vertex: Vertex) {
 ```
 
 ### ❌ Mistake 3: Float for Geometry
+
 **Wrong:**
+
 ```kotlin
 data class Point2(
     val x: Float,  // Not precise enough for CAD
     val y: Float
 )
 ```
+
 **Right:**
+
 ```kotlin
 data class Point2(
     val x: Double,  // CAD precision
@@ -715,7 +874,9 @@ data class Point2(
 ```
 
 ### ❌ Mistake 4: String-Based Mode Navigation
+
 **Wrong:**
+
 ```kotlin
 fun navigateTo(mode: String) {
     when (mode) {
@@ -723,7 +884,9 @@ fun navigateTo(mode: String) {
     }
 }
 ```
+
 **Right:**
+
 ```kotlin
 sealed interface AppMode {
     data object FloorPlan : AppMode
@@ -737,7 +900,9 @@ fun navigateTo(mode: AppMode) {
 ```
 
 ### ❌ Mistake 5: Simple Edge Graph Instead of BREP
+
 **Wrong:**
+
 ```kotlin
 // Using simple vertex-edge graph
 data class Edge(
@@ -746,7 +911,9 @@ data class Edge(
 )
 // Finding rooms requires expensive DFS every frame
 ```
+
 **Right:**
+
 ```kotlin
 // Using halfedge mesh (BREP)
 data class HalfEdge(
@@ -759,7 +926,9 @@ data class HalfEdge(
 ```
 
 ### ❌ Mistake 6: Not Using Spatial Indexing
+
 **Wrong:**
+
 ```kotlin
 // Linear search for snapping
 vertices.values.forEach { vertex ->
@@ -769,7 +938,9 @@ vertices.values.forEach { vertex ->
 }
 // O(n) every frame
 ```
+
 **Right:**
+
 ```kotlin
 // Use R-tree spatial index
 val nearby = spatialIndex.locateWithinDistance(cursor, 10.0)
@@ -777,7 +948,9 @@ val nearby = spatialIndex.locateWithinDistance(cursor, 10.0)
 ```
 
 ### ❌ Mistake 7: Not Using @Serializable
+
 **Wrong:**
+
 ```kotlin
 data class Vertex(
     val id: String,
@@ -785,7 +958,9 @@ data class Vertex(
 )
 // Can't serialize for persistence!
 ```
+
 **Right:**
+
 ```kotlin
 @Serializable
 data class Vertex(
@@ -803,15 +978,16 @@ data class Vertex(
 
 **Floor Plan Drawing Mode:**
 
-| Gesture | Action | Implementation |
-|---------|--------|----------------|
-| Single tap | Place vertex | `detectTapGestures { onTap -> }` |
-| Long press | Context menu | `detectTapGestures { onLongPress -> }` |
-| Two-finger pan | Pan canvas | `detectTransformGestures` |
-| Pinch | Zoom in/out | `detectTransformGestures` |
-| Three-finger swipe | Undo/Redo | Platform-specific gesture |
+| Gesture            | Action       | Implementation                         |
+| ------------------ | ------------ | -------------------------------------- |
+| Single tap         | Place vertex | `detectTapGestures { onTap -> }`       |
+| Long press         | Context menu | `detectTapGestures { onLongPress -> }` |
+| Two-finger pan     | Pan canvas   | `detectTransformGestures`              |
+| Pinch              | Zoom in/out  | `detectTransformGestures`              |
+| Three-finger swipe | Undo/Redo    | Platform-specific gesture              |
 
 **Implementation Example:**
+
 ```kotlin
 @Composable
 fun DrawingCanvas() {
@@ -836,6 +1012,7 @@ fun DrawingCanvas() {
 ```
 
 ### Color Scheme (Material 3)
+
 ```kotlin
 val LightColorScheme = lightColorScheme(
     primary = Color(0xFF2563EB),    // Blue
@@ -867,6 +1044,7 @@ val DarkColorScheme = darkColorScheme(
 ```
 
 **Types:**
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `refactor`: Code refactoring
@@ -875,9 +1053,11 @@ val DarkColorScheme = darkColorScheme(
 - `chore`: Maintenance
 
 **Scopes:**
+
 - `drawing`, `materials`, `constraints`, `ui`, `export`, `ios`, `android`, `common`, etc.
 
 **Example:**
+
 ```
 feat(drawing): implement touch-optimized smart snapping
 
@@ -885,7 +1065,7 @@ feat(drawing): implement touch-optimized smart snapping
 - Projects cursor onto nearby edges
 - Shows snap indicator when within 2° of perpendicular
 - Uses Compose Multiplatform Canvas for visual feedback
-- Refs spec-mobile.md § 6.1 Smart Snapping System
+- Refs spec.md § 6.1 Smart Snapping System
 ```
 
 ---
@@ -895,25 +1075,27 @@ feat(drawing): implement touch-optimized smart snapping
 ### Before Starting Development
 
 1. **Verify mise setup:**
-   ```bash
-   mise install  # Install all tools from .mise.toml
-   mise list     # Verify versions (Java 17, Gradle 8.10.2)
-   ```
+
+    ```bash
+    mise install  # Install all tools from .mise.toml
+    mise list     # Verify versions (Java 17, Gradle 8.10.2)
+    ```
 
 2. **Verify lefthook setup:**
-   ```bash
-   lefthook install       # Initialize Git hooks
-   lefthook run pre-commit  # Test hooks
-   ```
+    ```bash
+    lefthook install       # Initialize Git hooks
+    lefthook run pre-commit  # Test hooks
+    ```
 
 ### Development Workflow
 
 1. **Check `.claude/plans/`** for detailed implementation plans (local to project)
-2. **Read spec-mobile.md section** for the feature (§ 8 for scaffolding)
+2. **Read spec.md section** for the feature (§ 8 for scaffolding)
 3. **Create feature branch:**
-   ```bash
-   git checkout -b feat/your-feature-name
-   ```
+
+    ```bash
+    git checkout -b feat/your-feature-name
+    ```
 
 4. **Create event types** (sealed classes) if needed
 5. **Implement pure logic** in domain modules (testable in commonTest)
@@ -923,6 +1105,7 @@ feat(drawing): implement touch-optimized smart snapping
 9. **Write tests** (unit in commonTest, UI in androidInstrumentedTest/iosTest)
 
 10. **Run quality checks:**
+
     ```bash
     mise run lint    # ktlint + detekt
     mise run test    # All tests
@@ -930,6 +1113,7 @@ feat(drawing): implement touch-optimized smart snapping
     ```
 
 11. **Commit changes:**
+
     ```bash
     git add .
     git commit -m "feat(scope): your change"
@@ -937,6 +1121,7 @@ feat(drawing): implement touch-optimized smart snapping
     ```
 
 12. **Push to remote:**
+
     ```bash
     git push origin feat/your-feature-name
     # lefthook automatically runs pre-push checks (full tests + build)
@@ -949,6 +1134,7 @@ feat(drawing): implement touch-optimized smart snapping
 ### Emergency Bypass (Use Sparingly!)
 
 If you need to bypass hooks in emergency:
+
 ```bash
 LEFTHOOK=0 git commit -m "emergency: critical fix"
 # Document in commit message WHY hooks were skipped
@@ -963,11 +1149,13 @@ LEFTHOOK=0 git commit -m "emergency: critical fix"
 **Location:** `.claude/plans/` (project-specific, NOT global `~/.claude/plans/`)
 
 **Plan structure:**
+
 - `phase-X-overview.md` - Overview for major phase (e.g., `phase-0-overview.md`)
 - `phase-X-Y-name.md` - Individual sub-phase plans (e.g., `phase-0-1-kmp-setup.md`)
 
 **Each plan includes:**
-- **Context:** Why this phase exists, references to spec-mobile.md
+
+- **Context:** Why this phase exists, references to spec.md
 - **Implementation Steps:** Detailed code changes with complete examples
 - **File Structure:** What files change, what's added/removed
 - **Testing & Validation:** Manual test procedures with expected output
@@ -975,6 +1163,7 @@ LEFTHOOK=0 git commit -m "emergency: critical fix"
 - **Next Phase:** What comes after
 
 **Using plans:**
+
 1. Start with the overview: `phase-X-overview.md`
 2. Execute sub-phases sequentially: `phase-X-1-*.md`, `phase-X-2-*.md`, etc.
 3. Test after each sub-phase (manual validation + automated tests)
@@ -982,12 +1171,14 @@ LEFTHOOK=0 git commit -m "emergency: critical fix"
 5. Commit when phase complete
 
 **Why local plans?**
+
 - Project-specific implementation details
 - Version controlled with codebase
 - Team collaboration (everyone sees same plans)
 - No dependency on global Claude config
 
 **Example workflow:**
+
 ```bash
 # 1. Read the plan
 cat .claude/plans/phase-0-1-kmp-setup.md
@@ -1015,7 +1206,7 @@ cat .claude/plans/phase-0-2-mode-system.md
 
 ## 🆘 When in Doubt
 
-1. **Check spec-mobile.md** first
+1. **Check spec.md** first
 2. **Leverage KMP features** (expect/actual, sealed classes, Flows)
 3. **Ask user** if spec unclear
 4. **Follow KMP conventions** for multiplatform code
@@ -1027,25 +1218,30 @@ cat .claude/plans/phase-0-2-mode-system.md
 ## 📚 Reference Links
 
 **Project Docs:**
-- [spec-mobile.md](../spec-mobile.md) - Complete technical specification
+
+- [spec.md](../spec.md) - Complete technical specification
 - [README.md](../README.md) - Project overview
 
 **Kotlin Multiplatform Docs:**
+
 - [KMP Documentation](https://kotlinlang.org/docs/multiplatform.html)
 - [Kotlin 2.2.0 Release](https://blog.jetbrains.com/kotlin/2025/06/kotlin-2-2-0-released/)
 - [Google KMP Support](https://android-developers.googleblog.com/2025/05/android-kotlin-multiplatform-google-io-kotlinconf-2025.html)
 
 **Compose Multiplatform Docs:**
+
 - [Compose Multiplatform](https://www.jetbrains.com/lp/compose-multiplatform/)
 - [Compose Multiplatform 1.8.0](https://blog.jetbrains.com/kotlin/2025/05/compose-multiplatform-1-8-0-released-compose-multiplatform-for-ios-is-stable-and-production-ready/)
 - [Compose for iOS Tutorial](https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-multiplatform-create-first-app.html)
 
 **External Docs:**
+
 - [Kermit Logging](https://github.com/touchlab/Kermit)
 - [Koin DI](https://insert-koin.io/docs/reference/koin-mp/kmp/)
 - [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization)
 
 **Research References:**
+
 - [OnShape CAD](https://cad.onshape.com/help/Content/ui-basics.htm)
 - [Event-Driven CAD](https://novedge.com/blogs/design-news/deterministic-event-sourced-architecture-for-real-time-collaborative-cad)
 - [BREP Topology](https://en.wikipedia.org/wiki/Boundary_representation)

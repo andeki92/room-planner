@@ -1,8 +1,9 @@
 # Room Planner Main Menu & Navigation - Implementation Plan
 
-**Goal**: Clean up opentile references and implement the main menu (Project Browser) with local file storage, settings, and mode-based navigation following the event-driven architecture from spec-mobile.md.
+**Goal**: Clean up opentile references and implement the main menu (Project Browser) with local file storage, settings, and mode-based navigation following the event-driven architecture from spec.md.
 
 **User Decisions**:
+
 - ✅ Local file storage from the start (not in-memory)
 - ✅ Minimal project creation (just name)
 - ✅ Include Settings screen with unit preference (Imperial/Metric)
@@ -12,6 +13,7 @@
 ## Overview
 
 This implementation establishes the foundational architecture patterns that will be used throughout the app:
+
 1. **Event-driven architecture** - EventBus with Kotlin Flows
 2. **Mode-based navigation** - Sealed classes for type-safe mode switching
 3. **Immutable state** - StateFlow with data classes
@@ -35,9 +37,10 @@ rm -rf shared/src/commonTest/kotlin/com/opentile
 ### 1.2 Update Documentation Comments
 
 **Find and replace** "OpenTile Mobile" → "Room Planner" in:
+
 - `README.md` (title, references)
 - `CLAUDE.md` (header, package examples)
-- `spec-mobile.md` (title, examples - optional)
+- `spec.md` (title, examples - optional)
 - `build.gradle.kts` (line 1 comment)
 - `shared/build.gradle.kts` (line 1 comment)
 - `settings.gradle.kts` (line 1 comment)
@@ -55,11 +58,13 @@ rm -rf shared/src/commonTest/kotlin/com/opentile
 **File**: `gradle/libs.versions.toml`
 
 Add to `[versions]` section:
+
 ```toml
 kotlinx-datetime = "0.6.1"
 ```
 
 Add to `[libraries]` section:
+
 ```toml
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 ```
@@ -67,6 +72,7 @@ kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.
 ### 2.2 Update shared/build.gradle.kts
 
 Add to `commonMain.dependencies`:
+
 ```kotlin
 implementation(libs.kotlinx.datetime)
 implementation(libs.kotlinx.serialization.json)
@@ -313,10 +319,12 @@ expect class FileStorage {
 **File**: `shared/src/iosMain/kotlin/com/roomplanner/data/storage/FileStorage.ios.kt`
 
 Uses `NSFileManager` to store projects in Documents directory:
+
 - Projects: `Documents/projects/<uuid>/metadata.json`
 - Settings: `Documents/settings.json`
 
 Key points:
+
 - Use `NSFileManager.defaultManager`
 - Use `URLsForDirectory(NSDocumentDirectory, NSUserDomainMask)`
 - Create directories with `createDirectoryAtURL`
@@ -330,6 +338,7 @@ Key points:
 **File**: `shared/src/androidMain/kotlin/com/roomplanner/data/storage/FileStorage.android.kt`
 
 Uses `java.io.File` with app-private storage:
+
 - Requires `Context` parameter (provided by Koin)
 - Projects: `filesDir/projects/<uuid>/metadata.json`
 - Settings: `filesDir/settings.json`
@@ -514,6 +523,7 @@ fun App() {
 **File**: `shared/src/commonMain/kotlin/com/roomplanner/ui/screens/ProjectBrowserScreen.kt`
 
 Features:
+
 - Top bar with "Room Planner" title + Settings icon
 - Grid of project cards (LazyVerticalGrid)
 - Empty state: "No projects yet" message
@@ -528,6 +538,7 @@ Features:
 **File**: `shared/src/commonMain/kotlin/com/roomplanner/ui/components/ProjectCard.kt`
 
 Card layout:
+
 - Thumbnail placeholder (folder icon for now)
 - Project name (Material3 typography)
 - Modified date (formatted from kotlinx.datetime)
@@ -540,6 +551,7 @@ Card layout:
 **File**: `shared/src/commonMain/kotlin/com/roomplanner/ui/components/CreateProjectDialog.kt`
 
 Simple AlertDialog:
+
 - Text input for project name
 - "Create" button (disabled if name blank)
 - "Cancel" button
@@ -551,6 +563,7 @@ Simple AlertDialog:
 **File**: `shared/src/commonMain/kotlin/com/roomplanner/ui/screens/SettingsScreen.kt`
 
 Features:
+
 - Back button → ProjectBrowser
 - Radio buttons for Imperial/Metric
 - Save to FileStorage when changed
@@ -563,6 +576,7 @@ Features:
 **File**: `shared/src/commonMain/kotlin/com/roomplanner/ui/screens/FloorPlanScreen.kt`
 
 For now:
+
 - Load project from FileStorage
 - Show project name in top bar
 - Back button → ProjectBrowser
@@ -589,32 +603,38 @@ open iosApp/iosApp.xcodeproj
 ### 8.2 Manual Test Checklist
 
 **First Launch**:
+
 - [ ] App opens to Project Browser (empty state)
 - [ ] "No projects yet" message visible
 - [ ] Settings icon in top bar
 - [ ] FAB (+) button visible
 
 **Create Project**:
+
 - [ ] Tap FAB → Dialog opens
 - [ ] Enter name → "Create" enabled
 - [ ] Tap "Create" → Project appears in grid
 - [ ] Project card shows name + date
 
 **Open Project**:
+
 - [ ] Tap project → FloorPlan screen opens
 - [ ] Back button returns to browser
 
 **Settings**:
+
 - [ ] Tap Settings → Settings screen
 - [ ] Change units → Radio button updates
 - [ ] Back → Returns to browser
 
 **Persistence**:
+
 - [ ] Force quit app
 - [ ] Relaunch → Projects still there
 - [ ] Settings preserved
 
 **Delete**:
+
 - [ ] Tap delete on card → Confirmation
 - [ ] Confirm → Project removed
 
@@ -636,21 +656,25 @@ Mode: FloorPlan(uuid-123) → Settings
 ## Architecture Highlights
 
 ### Event-Driven Pattern
+
 - Tools/UI emit events via EventBus
 - Systems listen and react (StateManager, FileStorage)
 - Decoupled, testable, follows spec
 
 ### Mode-Based Navigation
+
 - Sealed interface for type-safety
 - Can carry data (e.g., FloorPlan(projectId))
 - Exhaustive when expressions
 
 ### Immutable State
+
 - Data classes with copy semantics
 - StateFlow for reactive updates
 - Compose integration via collectAsState()
 
 ### Platform-Specific I/O
+
 - expect/actual for FileStorage
 - iOS: NSFileManager (Documents directory)
 - Android: java.io.File (app-private storage)
@@ -661,6 +685,7 @@ Mode: FloorPlan(uuid-123) → Settings
 ## Success Criteria
 
 ✅ Complete when:
+
 - All opentile references removed
 - Empty directories deleted
 - Project Browser works with file persistence
@@ -675,28 +700,33 @@ Mode: FloorPlan(uuid-123) → Settings
 ## Critical Files Overview
 
 **Architecture Foundation**:
+
 - `App.kt` - Navigation controller demonstrating event-driven mode switching
 - `AppMode.kt` - Sealed interface for type-safe modes
 - `EventBus.kt` - Event system using Kotlin Flows
 - `StateManager.kt` - Immutable state with StateFlow
 
 **Data Models**:
+
 - `Project.kt` - Project data with kotlinx.datetime
 - `Settings.kt` - User preferences with MeasurementUnits enum
 - `AppState.kt` - Global app state
 
 **Platform-Specific**:
+
 - `FileStorage.kt` (common) - expect class interface
 - `FileStorage.ios.kt` - NSFileManager implementation
 - `FileStorage.android.kt` - java.io.File implementation
 - `UUID.kt` - expect/actual for UUID generation
 
 **UI Screens**:
+
 - `ProjectBrowserScreen.kt` - Main menu with project grid
 - `SettingsScreen.kt` - Unit preference selector
 - `FloorPlanScreen.kt` - Placeholder for Phase 1
 
 **DI Setup**:
+
 - `AppModule.kt` - Common dependencies (EventBus, StateManager)
 - `PlatformModule.kt` - Platform-specific (FileStorage)
 - `KoinInitializer.kt` - Startup initialization
@@ -755,6 +785,7 @@ shared/src/
 ## Next Steps After Implementation
 
 **Phase 1** will build on this foundation:
+
 - Implement drawing canvas in FloorPlanScreen
 - Add geometry primitives (Point2, Line, Polygon)
 - Implement smart snapping system

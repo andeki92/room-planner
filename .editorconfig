@@ -17,6 +17,12 @@ max_line_length = 120
 ij_kotlin_allow_trailing_comma = true
 ij_kotlin_allow_trailing_comma_on_call_site = true
 
+# Allow Compose naming convention (Composables start with uppercase)
+ktlint_standard_function-naming = disabled
+
+# Allow wildcard imports for Compose (common pattern)
+ktlint_standard_no-wildcard-imports = disabled
+
 [*.{xml,gradle,gradle.kts}]
 indent_size = 4
 

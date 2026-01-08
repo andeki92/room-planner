@@ -16,6 +16,7 @@ import co.touchlab.kermit.Logger
 import com.roomplanner.data.models.AppMode
 import com.roomplanner.data.models.Project
 import com.roomplanner.data.storage.FileStorage
+import com.roomplanner.localization.strings
 import com.roomplanner.ui.components.CreateProjectDialog
 import com.roomplanner.ui.components.ProjectCard
 import kotlinx.coroutines.launch
@@ -23,11 +24,10 @@ import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProjectBrowserScreen(
-    onNavigate: (AppMode) -> Unit
-) {
+fun ProjectBrowserScreen(onNavigate: (AppMode) -> Unit) {
     val fileStorage: FileStorage = koinInject()
     val scope = rememberCoroutineScope()
+    val strings = strings()
 
     var projects by remember { mutableStateOf<List<Project>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -36,12 +36,12 @@ fun ProjectBrowserScreen(
     // Load projects on first composition
     LaunchedEffect(Unit) {
         Logger.i { "✓ Phase 0: ProjectBrowser screen initialized" }
-        fileStorage.listProjects()
+        fileStorage
+            .listProjects()
             .onSuccess {
                 projects = it
                 Logger.i { "Loaded ${it.size} projects" }
-            }
-            .onFailure {
+            }.onFailure {
                 Logger.e { "✗ Failed to load projects: ${it.message}" }
             }
         isLoading = false
@@ -50,51 +50,53 @@ fun ProjectBrowserScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Room Planner") },
+                title = { Text(strings.appTitle) },
                 actions = {
                     IconButton(onClick = { onNavigate(AppMode.Settings) }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(Icons.Default.Settings, contentDescription = strings.settingsButton)
                     }
-                }
+                },
             )
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showCreateDialog = true }
+                onClick = { showCreateDialog = true },
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Create Project")
+                Icon(Icons.Default.Add, contentDescription = strings.createProjectButton)
             }
-        }
+        },
     ) { paddingValues ->
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
         ) {
             when {
                 isLoading -> {
                     CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center)
+                        modifier = Modifier.align(Alignment.Center),
                     )
                 }
 
                 projects.isEmpty() -> {
                     // Empty state
                     Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(32.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .padding(32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        verticalArrangement = Arrangement.Center,
                     ) {
                         Text(
-                            text = "No projects yet",
-                            style = MaterialTheme.typography.headlineMedium
+                            text = strings.noProjectsYet,
+                            style = MaterialTheme.typography.headlineMedium,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Tap + to create your first project",
-                            style = MaterialTheme.typography.bodyMedium
+                            text = strings.tapPlusToCreate,
+                            style = MaterialTheme.typography.bodyMedium,
                         )
                     }
                 }
@@ -105,7 +107,7 @@ fun ProjectBrowserScreen(
                         columns = GridCells.Adaptive(minSize = 160.dp),
                         contentPadding = PaddingValues(16.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         items(projects, key = { it.id }) { project ->
                             ProjectCard(
@@ -116,12 +118,13 @@ fun ProjectBrowserScreen(
                                 },
                                 onDelete = {
                                     scope.launch {
-                                        fileStorage.deleteProject(project.id)
+                                        fileStorage
+                                            .deleteProject(project.id)
                                             .onSuccess {
                                                 projects = projects.filter { it.id != project.id }
                                             }
                                     }
-                                }
+                                },
                             )
                         }
                     }
@@ -137,17 +140,17 @@ fun ProjectBrowserScreen(
             onCreate = { projectName ->
                 scope.launch {
                     val newProject = Project.create(projectName)
-                    fileStorage.saveProject(newProject)
+                    fileStorage
+                        .saveProject(newProject)
                         .onSuccess {
                             projects = listOf(newProject) + projects
                             showCreateDialog = false
                             Logger.i { "✓ Project created: $projectName" }
-                        }
-                        .onFailure {
+                        }.onFailure {
                             Logger.e { "✗ Failed to create project: ${it.message}" }
                         }
                 }
-            }
+            },
         )
     }
 }

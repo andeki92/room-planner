@@ -2476,21 +2476,31 @@ xcodebuild -workspace iosApp.xcworkspace -scheme iosApp -sdk iphonesimulator
 
 ## 9. Implementation Roadmap
 
-### Phase 0: Foundation (Weeks 1-2) ← START HERE
+### Phase 0: Foundation (Weeks 1-2) ✅ COMPLETED 2026-01-08
 
 **Goal:** Setup KMP project, mode system, basic Compose UI
 
-- [ ] Create KMP project structure (shared, androidApp, iosApp)
-- [ ] Setup Gradle configuration (version catalog, dependencies)
-- [ ] Implement AppMode sealed class + navigation
-- [ ] Basic Compose UI layouts for each mode
-- [ ] Mode transition animations (fade in/out)
-- [ ] Event bus (SharedFlow) infrastructure
-- [ ] State management (StateFlow)
-- [ ] Logging setup (Kermit)
-- [ ] DI setup (Koin)
+- [x] Create KMP project structure (shared, androidApp, iosApp)
+- [x] Setup Gradle configuration (version catalog, dependencies)
+- [x] Implement AppMode sealed class + navigation
+- [x] Basic Compose UI layouts for each mode
+- [x] Mode transition animations (fade in/out)
+- [x] Event bus (SharedFlow) infrastructure
+- [x] State management (StateFlow)
+- [x] Logging setup (Kermit)
+- [x] DI setup (Koin)
 
-**Deliverable:** Can switch between modes, UI layouts change, logging works
+**Deliverable:** ✅ Can switch between modes, UI layouts change, logging works
+
+**Additional achievements:**
+- [x] Project Browser with file persistence (iOS: NSFileManager, Android: java.io.File)
+- [x] Settings screen with Imperial/Metric unit preference
+- [x] expect/actual pattern for platform-specific code (UUID, FileStorage)
+- [x] Taskfile.yml for build automation
+- [x] iOS deployment target: 17.2 (Compose Multiplatform requirement)
+- [x] CADisableMinimumFrameDurationOnPhone for high refresh rate support
+
+**Implementation Details:** See `.claude/plans/main-menu-implementation.md`
 
 ### Phase 1: Drawing Mode - Touch Gestures (Weeks 3-5)
 
