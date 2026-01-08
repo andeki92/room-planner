@@ -12,6 +12,8 @@ import platform.Foundation.NSString
 import platform.Foundation.NSURL
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSUserDomainMask
+import platform.Foundation.stringWithContentsOfFile
+import platform.Foundation.writeToFile
 
 @OptIn(ExperimentalForeignApi::class)
 actual class FileStorage {
@@ -74,7 +76,7 @@ actual class FileStorage {
                     error = null,
                 ) ?: throw Exception("Project not found: $projectId")
 
-            json.decodeFromString<Project>(jsonString as String)
+            json.decodeFromString<Project>(jsonString)
         }
 
     actual suspend fun listProjects(): Result<List<Project>> =
@@ -85,7 +87,7 @@ actual class FileStorage {
                     includingPropertiesForKeys = null,
                     options = 0u,
                     error = null,
-                ) as? List<*> ?: emptyList<Any>()
+                ) ?: emptyList<Any>()
 
             contents
                 .mapNotNull { url ->
@@ -126,7 +128,7 @@ actual class FileStorage {
                 )
 
             if (jsonString != null) {
-                json.decodeFromString<Settings>(jsonString as String)
+                json.decodeFromString<Settings>(jsonString)
             } else {
                 Settings.default() // First launch
             }

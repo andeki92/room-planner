@@ -89,7 +89,7 @@ fun SettingsScreen(onNavigate: (AppMode) -> Unit) {
                 }
             }
 
-            Divider(modifier = Modifier.padding(vertical = 16.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
             // Measurement Units Setting
             Text(
@@ -134,7 +134,7 @@ fun SettingsScreen(onNavigate: (AppMode) -> Unit) {
                 }
             }
 
-            Divider(modifier = Modifier.padding(vertical = 16.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
             // Placeholder for future settings
             Text(
