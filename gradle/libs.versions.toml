@@ -1,0 +1,103 @@
+# Room Planner - Gradle Version Catalog
+# Centralized dependency management for Kotlin Multiplatform
+# See: https://docs.gradle.org/current/userguide/platforms.html
+
+[versions]
+# Kotlin & Compose
+kotlin = "2.2.0"
+compose = "1.8.0"
+agp = "8.7.3"
+
+# AndroidX
+androidx-activity-compose = "1.9.3"
+androidx-core = "1.15.0"
+androidx-lifecycle = "2.9.0"
+
+# Dependency Injection
+koin = "4.1.0"
+
+# Serialization
+kotlinx-serialization = "1.8.0"
+
+# Coroutines
+kotlinx-coroutines = "1.10.1"
+
+# Logging
+kermit = "2.0.4"
+
+# UUID
+uuid = "0.9.0"
+
+# DateTime
+kotlinx-datetime = "0.6.1"
+
+# Testing
+junit = "4.13.2"
+kotlin-test = "2.2.0"
+
+# Code Quality
+ktlint = "12.1.2"
+detekt = "1.23.7"
+
+[libraries]
+# Kotlin
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin-test" }
+
+# Compose Multiplatform
+compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }
+compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose" }
+compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose" }
+compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose" }
+
+# AndroidX
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity-compose" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
+androidx-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "androidx-lifecycle" }
+androidx-lifecycle-viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version.ref = "androidx-lifecycle" }
+
+# Koin (DI)
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
+koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koin" }
+
+# Kotlinx
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }
+
+# Logging
+kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
+
+# UUID
+uuid = { module = "com.benasher44:uuid", version.ref = "uuid" }
+
+# DateTime
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
+
+# Testing
+junit = { module = "junit:junit", version.ref = "junit" }
+
+[plugins]
+# Android
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+
+# Kotlin
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+
+# Compose
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose" }
+
+# Code Quality
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+
+[bundles]
+# Common bundles for reuse
+compose = ["compose-runtime", "compose-foundation", "compose-material3", "compose-ui"]
+kotlinx = ["kotlinx-serialization-json", "kotlinx-coroutines-core"]
+androidx-compose = ["androidx-activity-compose", "androidx-core-ktx", "androidx-lifecycle-runtime", "androidx-lifecycle-viewmodel"]

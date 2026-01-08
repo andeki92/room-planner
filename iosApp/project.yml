@@ -1,0 +1,30 @@
+name: iosApp
+
+options:
+  bundleIdPrefix: com.roomplanner
+
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.2"
+    sources:
+      - iosApp
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.roomplanner.app
+      INFOPLIST_FILE: iosApp/Info.plist
+      SWIFT_VERSION: "5.9"
+      FRAMEWORK_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/../shared/build/bin/iosSimulatorArm64/debugFramework
+      OTHER_LDFLAGS:
+        - $(inherited)
+        - -framework
+        - shared
+      ENABLE_USER_SCRIPT_SANDBOXING: NO
+    preBuildScripts:
+      - script: |
+          cd "$SRCROOT/.."
+          ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
+        name: Build Shared Framework
+        basedOnDependencyAnalysis: false

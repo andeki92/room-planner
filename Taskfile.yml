@@ -1,0 +1,43 @@
+# Room Planner - Task Runner Configuration
+# Install: brew install go-task/tap/go-task
+# Run: task build
+
+version: '3'
+
+tasks:
+  build:
+    desc: Build Kotlin shared framework and regenerate Xcode project
+    cmds:
+      - ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
+      - cd iosApp && xcodegen generate
+    silent: false
+
+  build:ios:
+    desc: Build iOS framework only
+    cmd: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
+
+  build:android:
+    desc: Build Android app
+    cmd: ./gradlew :androidApp:assembleDebug
+
+  clean:
+    desc: Clean all build artifacts
+    cmd: ./gradlew clean
+
+  test:
+    desc: Run all tests
+    cmd: ./gradlew test
+
+  lint:
+    desc: Run ktlint and detekt
+    cmd: ./gradlew ktlintCheck detekt
+
+  format:
+    desc: Auto-format code with ktlint
+    cmd: ./gradlew ktlintFormat
+
+  xcode:
+    desc: Build framework and open Xcode
+    cmds:
+      - task: build
+      - open iosApp/iosApp.xcodeproj
