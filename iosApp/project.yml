@@ -16,7 +16,7 @@ targets:
       SWIFT_VERSION: "5.9"
       FRAMEWORK_SEARCH_PATHS:
         - $(inherited)
-        - $(SRCROOT)/../shared/build/bin/iosSimulatorArm64/debugFramework
+        - $(SRCROOT)/../shared/build/bin/iosArm64/debugFramework
       OTHER_LDFLAGS:
         - $(inherited)
         - -framework
@@ -25,6 +25,6 @@ targets:
     preBuildScripts:
       - script: |
           cd "$SRCROOT/.."
-          ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
+          ./gradlew :shared:linkDebugFrameworkIosArm64
         name: Build Shared Framework
         basedOnDependencyAnalysis: false

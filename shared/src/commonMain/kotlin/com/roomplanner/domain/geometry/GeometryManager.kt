@@ -45,6 +45,7 @@ class GeometryManager(
     private suspend fun handleEvent(event: GeometryEvent) {
         when (event) {
             is GeometryEvent.PointPlaced -> handlePointPlaced(event)
+            is GeometryEvent.CameraTransformed -> handleCameraTransformed(event)
         }
     }
 
@@ -102,5 +103,73 @@ class GeometryManager(
         stateManager.updateState { state ->
             state.withLine(line)
         }
+    }
+
+    private suspend fun handleCameraTransformed(event: GeometryEvent.CameraTransformed) {
+        Logger.d { "→ Camera transform: pan=(${event.panDelta.x}, ${event.panDelta.y}), zoom=${event.zoomDelta}" }
+
+        stateManager.updateState { state ->
+            val currentCamera = state.cameraTransform
+
+            // 1. Apply zoom delta
+            val newZoom =
+                (currentCamera.zoom * event.zoomDelta).coerceIn(
+                    com.roomplanner.data.models.CameraTransform.MIN_ZOOM,
+                    com.roomplanner.data.models.CameraTransform.MAX_ZOOM,
+                )
+
+            // 2. Adjust pan to zoom around zoomCenter (if provided)
+            val (newPanX, newPanY) =
+                if (event.zoomCenter != null && event.zoomDelta != 1f) {
+                    // Convert zoom center to world coordinates BEFORE zoom
+                    val centerWorld = screenToWorldStatic(event.zoomCenter, currentCamera)
+
+                    // After zoom, convert back to screen - this is where it WOULD be
+                    val centerScreenAfter =
+                        androidx.compose.ui.geometry.Offset(
+                            (centerWorld.x.toFloat() * newZoom) + currentCamera.panX,
+                            (centerWorld.y.toFloat() * newZoom) + currentCamera.panY,
+                        )
+
+                    // Calculate pan adjustment to keep center fixed
+                    val panAdjustX = event.zoomCenter.x - centerScreenAfter.x
+                    val panAdjustY = event.zoomCenter.y - centerScreenAfter.y
+
+                    Pair(
+                        currentCamera.panX + event.panDelta.x + panAdjustX,
+                        currentCamera.panY + event.panDelta.y + panAdjustY,
+                    )
+                } else {
+                    // No zoom, just apply pan delta
+                    Pair(
+                        currentCamera.panX + event.panDelta.x,
+                        currentCamera.panY + event.panDelta.y,
+                    )
+                }
+
+            val newCamera =
+                com.roomplanner.data.models.CameraTransform(
+                    panX = newPanX,
+                    panY = newPanY,
+                    zoom = newZoom,
+                )
+
+            Logger.d { "  Camera updated: pan=($newPanX, $newPanY), zoom=$newZoom" }
+
+            state.copy(cameraTransform = newCamera)
+        }
+    }
+
+    /**
+     * Static helper: convert screen to world (for use outside DrawScope).
+     * Inverse transform: world = (screen - pan) / zoom
+     */
+    private fun screenToWorldStatic(
+        screenOffset: androidx.compose.ui.geometry.Offset,
+        camera: com.roomplanner.data.models.CameraTransform,
+    ): Point2 {
+        val worldX = ((screenOffset.x - camera.panX) / camera.zoom).toDouble()
+        val worldY = ((screenOffset.y - camera.panY) / camera.zoom).toDouble()
+        return Point2(worldX, worldY)
     }
 }

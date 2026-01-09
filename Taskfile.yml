@@ -8,13 +8,13 @@ tasks:
   build:
     desc: Build Kotlin shared framework and regenerate Xcode project
     cmds:
-      - ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
+      - ./gradlew :shared:linkDebugFrameworkIosArm64
       - cd iosApp && xcodegen generate
     silent: false
 
   build:ios:
     desc: Build iOS framework only
-    cmd: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
+    cmd: ./gradlew :shared:linkDebugFrameworkIosArm64
 
   build:android:
     desc: Build Android app

@@ -2,6 +2,7 @@ package com.roomplanner.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,7 +54,7 @@ fun DrawingCanvas(
         modifier =
             modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
+                .pointerInput(state.cameraTransform) {
                     detectTapGestures(
                         onTap = { screenOffset ->
                             coroutineScope.launch {
@@ -61,6 +62,14 @@ fun DrawingCanvas(
                             }
                         },
                     )
+                }.pointerInput(state.cameraTransform) {
+                    detectTransformGestures(
+                        panZoomLock = true, // Disable rotation
+                    ) { centroid, pan, zoom, _ ->
+                        coroutineScope.launch {
+                            handleTransform(pan, zoom, centroid, eventBus)
+                        }
+                    }
                 },
     ) {
         // 1. Draw grid background
@@ -102,19 +111,69 @@ private suspend fun handleTap(
 }
 
 /**
+ * Handle pan/zoom transform gesture: emit camera event.
+ * Phase 1.2: Two-finger pan and pinch-to-zoom
+ */
+private suspend fun handleTransform(
+    panDelta: Offset,
+    zoomDelta: Float,
+    centroid: Offset,
+    eventBus: EventBus,
+) {
+    // Only emit if there's actual change
+    if (panDelta != Offset.Zero || zoomDelta != 1f) {
+        eventBus.emit(
+            GeometryEvent.CameraTransformed(
+                panDelta = panDelta,
+                zoomDelta = zoomDelta,
+                zoomCenter = centroid,
+            ),
+        )
+    }
+}
+
+/**
  * Convert screen coordinates to world coordinates.
- * Inverse of world-to-screen transform: scale(zoom) -> translate(pan)
+ * Inverse of worldToScreen: world = (screen - pan) / zoom
  *
- * Phase 1.1: No pan/zoom, so screen == world
- * Phase 1.2: Will account for camera transform
+ * Phase 1.1: No pan/zoom (identity transform)
+ * Phase 1.2: Apply inverse camera transform
  */
 private fun screenToWorld(
     screenOffset: Offset,
     camera: CameraTransform,
 ): Point2 {
-    // For now, screen coordinates = world coordinates (no pan/zoom yet)
-    // Future: apply inverse camera transform
-    return Point2.fromOffset(screenOffset)
+    // Inverse transform: subtract pan, then divide by zoom
+    val worldX = ((screenOffset.x - camera.panX) / camera.zoom).toDouble()
+    val worldY = ((screenOffset.y - camera.panY) / camera.zoom).toDouble()
+    return Point2(worldX, worldY)
+}
+
+/**
+ * Convert world coordinates to screen coordinates.
+ * Apply camera transform: translate(pan) -> scale(zoom)
+ *
+ * Formula: screen = (world * zoom) + pan
+ */
+private fun worldToScreen(
+    worldPoint: Point2,
+    camera: CameraTransform,
+): Offset {
+    val x = (worldPoint.x.toFloat() * camera.zoom) + camera.panX
+    val y = (worldPoint.y.toFloat() * camera.zoom) + camera.panY
+    return Offset(x, y)
+}
+
+/**
+ * Overload for Offset input (convenience)
+ */
+private fun worldToScreen(
+    worldOffset: Offset,
+    camera: CameraTransform,
+): Offset {
+    val x = (worldOffset.x * camera.zoom) + camera.panX
+    val y = (worldOffset.y * camera.zoom) + camera.panY
+    return Offset(x, y)
 }
 
 /**
@@ -132,6 +191,7 @@ private fun snapToGrid(
 
 /**
  * Draw grid background for visual reference.
+ * Phase 1.2: Apply camera transform (grid moves/scales with viewport)
  */
 private fun DrawScope.drawGrid(
     camera: CameraTransform,
@@ -139,10 +199,18 @@ private fun DrawScope.drawGrid(
     config: com.roomplanner.data.models.DrawingConfig,
 ) {
     val gridColor = config.gridColorCompose()
-    val gridSizeFloat = gridSize.toFloat()
+    val gridSizeScreen = (gridSize.toFloat() * camera.zoom) // Grid size in screen pixels
+
+    // Calculate grid offset (so grid aligns with world origin)
+    // World origin (0,0) maps to screen (panX, panY)
+    // We want grid lines at world 0, ±gridSize, ±2*gridSize, ...
+    // which map to screen panX, panX±gridSizeScreen, panX±2*gridSizeScreen, ...
+    // Find first visible grid line (screen x >= 0)
+    val gridOffsetX = ((camera.panX % gridSizeScreen) + gridSizeScreen) % gridSizeScreen
+    val gridOffsetY = ((camera.panY % gridSizeScreen) + gridSizeScreen) % gridSizeScreen
 
     // Draw vertical grid lines
-    var x = 0f
+    var x = gridOffsetX
     while (x < size.width) {
         drawLine(
             color = gridColor,
@@ -150,11 +218,11 @@ private fun DrawScope.drawGrid(
             end = Offset(x, size.height),
             strokeWidth = config.gridLineWidth,
         )
-        x += gridSizeFloat
+        x += gridSizeScreen
     }
 
     // Draw horizontal grid lines
-    var y = 0f
+    var y = gridOffsetY
     while (y < size.height) {
         drawLine(
             color = gridColor,
@@ -162,12 +230,13 @@ private fun DrawScope.drawGrid(
             end = Offset(size.width, y),
             strokeWidth = config.gridLineWidth,
         )
-        y += gridSizeFloat
+        y += gridSizeScreen
     }
 }
 
 /**
  * Draw all lines (walls).
+ * Phase 1.2: Transform world coordinates to screen space
  */
 private fun DrawScope.drawLines(
     state: AppState,
@@ -175,8 +244,9 @@ private fun DrawScope.drawLines(
     config: com.roomplanner.data.models.DrawingConfig,
 ) {
     state.lines.forEach { line ->
-        val start = line.geometry.start.toOffset()
-        val end = line.geometry.end.toOffset()
+        // Convert world coordinates to screen coordinates
+        val start = worldToScreen(line.geometry.start, camera)
+        val end = worldToScreen(line.geometry.end, camera)
 
         drawLine(
             color = config.lineColorCompose(),
@@ -189,6 +259,7 @@ private fun DrawScope.drawLines(
 
 /**
  * Draw all vertices (snap points).
+ * Phase 1.2: Transform world coordinates to screen space
  * Active vertex (last placed) is highlighted in blue.
  */
 private fun DrawScope.drawVertices(
@@ -205,17 +276,20 @@ private fun DrawScope.drawVertices(
                 else -> config.vertexColorNormalCompose()
             }
 
+        // Convert world coordinates to screen coordinates
+        val screenPosition = worldToScreen(vertex.position, camera)
+
         drawCircle(
             color = color,
             radius = config.vertexRadius,
-            center = vertex.position.toOffset(),
+            center = screenPosition,
         )
 
         // Draw outline for better visibility
         drawCircle(
             color = config.vertexOutlineColorCompose(),
             radius = config.vertexRadius,
-            center = vertex.position.toOffset(),
+            center = screenPosition,
             style = Stroke(width = config.vertexStrokeWidth),
         )
     }

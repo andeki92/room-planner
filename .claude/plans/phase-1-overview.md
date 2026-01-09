@@ -7,6 +7,7 @@
 - 📋 Phase 1.2: Pan/Zoom Navigation (PLANNED)
 - 📋 Phase 1.3: Smart Snapping (PLANNED)
 - 📋 Phase 1.4: Selection & Editing (PLANNED)
+- 📋 Phase 1.5: Dimension Constraints (PLANNED)
 
 ---
 
@@ -165,6 +166,47 @@ Phase 1 transforms Room Planner from a **project browser** into a **functional 2
 
 ---
 
+### Phase 1.5: Dimension Constraints 📋 PLANNED
+
+**Plan**: `.claude/plans/phase-1-5-dimension-constraints.md`
+
+**Capabilities**:
+- Lock line lengths to specific dimensions (e.g., "100cm")
+- Apply distance constraints to edges
+- Iterative constraint solver (Gauss-Seidel relaxation)
+- Dimension input UI (dialog + quick presets)
+- Visual dimension labels with arrows
+- Constraint validation and conflict detection
+
+**Key Changes**:
+- `Constraint` sealed interface (Distance, Angle, Parallel, Perpendicular)
+- `ConstraintSolver` with iterative relaxation algorithm
+- `ConstraintManager` event handler
+- Dimension input dialog in DrawingCanvas
+- Visual dimension labels rendered on canvas
+- `AppState.constraints` map for constraint storage
+
+**Architecture Pattern**:
+- User selects line → opens dimension dialog
+- Dialog emits `ConstraintEvent.ConstraintAdded(Distance(lineId, 100.0))`
+- ConstraintManager stores constraint in AppState
+- ConstraintSolver runs after any vertex movement
+- Solver iterates up to 100 times with 0.5 damping factor
+- Converges to <0.001 tolerance (sub-millimeter precision)
+- Visual labels show constraint values on canvas
+
+**Success Criteria**:
+- Can lock walls to exact lengths (100cm, 200cm, etc.)
+- Solver converges quickly (<100ms for typical floor plans)
+- Constraints persist during selection/editing
+- Moving constrained vertices triggers solver
+- Visual feedback shows constraint satisfaction
+- Over-constrained systems detected and reported
+
+**Estimated Time**: 5-6 hours
+
+---
+
 ## Phase 1 Complete: Capabilities Summary
 
 At the end of Phase 1, users can:
@@ -191,7 +233,13 @@ At the end of Phase 1, users can:
    - Delete entities with Delete key
    - Connected lines update automatically
 
-5. **Professional workflow**
+5. **Apply dimension constraints**
+   - Lock walls to specific lengths (100cm, 200cm, etc.)
+   - Automatic constraint solving (maintains dimensions during edits)
+   - Visual dimension labels on canvas
+   - Quick preset dimensions (common room sizes)
+
+6. **Professional workflow**
    - Consistent 20px tap/snap targets (screen space)
    - Visual feedback (snap indicators, selection highlights)
    - Event-driven architecture (undo/redo ready)
@@ -482,6 +530,7 @@ shared/src/commonMain/kotlin/com/roomplanner/
 2. **Phase 1.2** - Camera (requires Phase 1.1 state)
 3. **Phase 1.3** - Snapping (requires Phase 1.2 transforms)
 4. **Phase 1.4** - Selection (requires Phase 1.1-1.3 complete)
+5. **Phase 1.5** - Dimension Constraints (requires Phase 1.4 selection)
 
 **Cannot skip phases** - each builds on previous
 
@@ -491,8 +540,9 @@ shared/src/commonMain/kotlin/com/roomplanner/
 - **Phase 1.2**: 2-3 hours
 - **Phase 1.3**: 3-4 hours
 - **Phase 1.4**: 4-5 hours
+- **Phase 1.5**: 5-6 hours
 
-**Total**: ~12-15 hours for complete Phase 1
+**Total**: ~20-24 hours for complete Phase 1
 
 **Includes**:
 - Implementation
