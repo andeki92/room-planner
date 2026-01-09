@@ -14,6 +14,8 @@ targets:
       PRODUCT_BUNDLE_IDENTIFIER: com.roomplanner.app
       INFOPLIST_FILE: iosApp/Info.plist
       SWIFT_VERSION: "5.9"
+      DEVELOPMENT_TEAM: 5EBWJW5V4J
+      CODE_SIGN_STYLE: Automatic
       FRAMEWORK_SEARCH_PATHS:
         - $(inherited)
         - $(SRCROOT)/../shared/build/bin/iosArm64/debugFramework

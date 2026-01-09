@@ -16,6 +16,9 @@ import com.roomplanner.data.models.Project
 import com.roomplanner.data.storage.FileStorage
 import com.roomplanner.localization.strings
 import com.roomplanner.ui.components.DrawingCanvas
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -29,6 +32,7 @@ fun FloorPlanScreen(
     val eventBus: EventBus = koinInject()
     val geometryManager: com.roomplanner.domain.geometry.GeometryManager = koinInject()
     val strings = strings()
+    val scope = rememberCoroutineScope()
 
     var project by remember { mutableStateOf<Project?>(null) }
     var isLoading by remember { mutableStateOf(true) }
@@ -36,8 +40,13 @@ fun FloorPlanScreen(
     // Collect app state for drawing
     val appState by stateManager.state.collectAsState()
 
-    // Load project
+    // Load project metadata and drawing state
     LaunchedEffect(projectId) {
+        // CRITICAL: Clear any previous project state FIRST
+        stateManager.updateState { it.clearProjectDrawing() }
+        Logger.d { "Cleared previous project state before loading $projectId" }
+
+        // Load project metadata
         fileStorage
             .loadProject(projectId)
             .onSuccess {
@@ -46,7 +55,46 @@ fun FloorPlanScreen(
             }.onFailure {
                 Logger.e { "✗ Failed to load project: ${it.message}" }
             }
+
+        // Load drawing state for this project
+        fileStorage
+            .loadProjectDrawing(projectId)
+            .onSuccess { drawingState ->
+                stateManager.updateState { state ->
+                    state
+                        .copy(currentProjectId = projectId)
+                        .withProjectDrawing(drawingState)
+                }
+                Logger.i {
+                    "✓ Drawing state loaded: ${drawingState.vertices.size} vertices, ${drawingState.lines.size} lines"
+                }
+            }.onFailure {
+                Logger.e { "✗ Failed to load drawing state: ${it.message}" }
+            }
+
         isLoading = false
+    }
+
+    // Auto-save drawing state when leaving screen
+    DisposableEffect(projectId) {
+        onDispose {
+            // Save drawing state when screen is disposed
+            // Use CoroutineScope with Default dispatcher for cleanup
+            val currentDrawingState = stateManager.state.value.projectDrawingState
+            if (currentDrawingState != null) {
+                CoroutineScope(Dispatchers.Default).launch {
+                    fileStorage
+                        .saveProjectDrawing(projectId, currentDrawingState)
+                        .onSuccess {
+                            Logger.i { "✓ Drawing state auto-saved on screen exit" }
+                        }.onFailure {
+                            Logger.e { "✗ Failed to auto-save drawing state: ${it.message}" }
+                        }
+                }
+            }
+            // Clear drawing state from global state
+            stateManager.updateState { it.clearProjectDrawing() }
+        }
     }
 
     Scaffold(
@@ -104,7 +152,7 @@ fun FloorPlanScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = strings.vertexCount(appState.vertices.size),
+                            text = strings.vertexCount(appState.projectDrawingState?.vertices?.size ?: 0),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

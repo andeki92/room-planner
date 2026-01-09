@@ -4,7 +4,6 @@ import android.content.Context
 import co.touchlab.kermit.Logger
 import com.roomplanner.data.models.Project
 import com.roomplanner.data.models.Settings
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 
@@ -58,7 +57,35 @@ actual class FileStorage(
             val projectDir = File(projectsDir, projectId)
             if (projectDir.exists()) {
                 projectDir.deleteRecursively()
-                Logger.i { "✓ Project deleted: $projectId" }
+                Logger.i { "✓ Project deleted: $projectId (metadata + drawing data)" }
+            }
+        }
+
+    actual suspend fun saveProjectDrawing(
+        projectId: String,
+        drawingState: com.roomplanner.data.models.ProjectDrawingState,
+    ): Result<Unit> =
+        runCatching {
+            val projectDir = File(projectsDir, projectId).also { it.mkdirs() }
+            val drawingFile = File(projectDir, "drawing.json")
+
+            val jsonString = json.encodeToString(drawingState)
+            drawingFile.writeText(jsonString)
+
+            Logger.d { "✓ Drawing state saved for project: $projectId" }
+        }
+
+    actual suspend fun loadProjectDrawing(projectId: String): Result<com.roomplanner.data.models.ProjectDrawingState> =
+        runCatching {
+            val drawingFile = File(projectsDir, "$projectId/drawing.json")
+            if (drawingFile.exists()) {
+                val jsonString = drawingFile.readText()
+                json.decodeFromString<com.roomplanner.data.models.ProjectDrawingState>(jsonString)
+            } else {
+                // New project - return empty drawing state
+                Logger.d { "No drawing.json found for project $projectId, returning empty state" }
+                com.roomplanner.data.models.ProjectDrawingState
+                    .empty()
             }
         }
 

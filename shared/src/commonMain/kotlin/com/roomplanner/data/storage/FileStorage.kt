@@ -1,6 +1,7 @@
 package com.roomplanner.data.storage
 
 import com.roomplanner.data.models.Project
+import com.roomplanner.data.models.ProjectDrawingState
 import com.roomplanner.data.models.Settings
 
 /**
@@ -14,7 +15,8 @@ import com.roomplanner.data.models.Settings
  * ```
  * /projects/
  *   /project-uuid-1/
- *     metadata.json     (Project data)
+ *     metadata.json     (Project metadata: name, dates)
+ *     drawing.json      (Drawing state: vertices, lines, camera)
  *   /project-uuid-2/
  *     ...
  * /settings.json
@@ -37,9 +39,23 @@ expect class FileStorage {
     suspend fun listProjects(): Result<List<Project>>
 
     /**
-     * Delete project and all associated files
+     * Delete project and all associated files (metadata + drawing data)
      */
     suspend fun deleteProject(projectId: String): Result<Unit>
+
+    /**
+     * Save project drawing state (vertices, lines, camera, etc.)
+     */
+    suspend fun saveProjectDrawing(
+        projectId: String,
+        drawingState: ProjectDrawingState,
+    ): Result<Unit>
+
+    /**
+     * Load project drawing state.
+     * Returns empty state if drawing.json doesn't exist (new project).
+     */
+    suspend fun loadProjectDrawing(projectId: String): Result<ProjectDrawingState>
 
     /**
      * Save settings

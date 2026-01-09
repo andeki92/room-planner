@@ -1,7 +1,5 @@
 package com.roomplanner.data.models
 
-import com.roomplanner.domain.drawing.Line
-import com.roomplanner.domain.drawing.Vertex
 import kotlinx.serialization.Serializable
 
 /**
@@ -11,43 +9,40 @@ import kotlinx.serialization.Serializable
  * Design rationale:
  * - Single source of truth for entire app
  * - Immutable state enables time-travel debugging and undo/redo
- * - Map-based storage for O(1) lookup by ID
+ * - Per-project drawing state (isolated between projects)
  * - Structural sharing minimizes memory allocations
+ *
+ * State architecture:
+ * - App-level: mode, settings, current project ID
+ * - Project-level: drawing data (vertices, lines, camera) stored in ProjectDrawingState
  */
 @Serializable
 data class AppState(
     val currentMode: AppMode = AppMode.ProjectBrowser,
     val settings: Settings = Settings.default(),
     val currentProjectId: String? = null,
-    // Drawing state (Floor Plan mode)
-    val vertices: Map<String, Vertex> = emptyMap(),
-    val lines: List<Line> = emptyList(),
-    val cameraTransform: CameraTransform = CameraTransform.default(),
-    val snapSettings: SnapSettings = SnapSettings.defaultImperial(),
-    val drawingConfig: DrawingConfig = DrawingConfig.default(),
-    // Drawing tool state
-    val activeVertexId: String? = null, // Last placed vertex (for continuous drawing)
+    // Per-project drawing state (null when not in FloorPlan mode)
+    val projectDrawingState: ProjectDrawingState? = null,
 ) {
     companion object {
         fun initial() = AppState()
     }
 
     /**
-     * Helper: Add a vertex to the state immutably.
+     * Helper: Load drawing state for a project
      */
-    fun withVertex(vertex: Vertex): AppState =
+    fun withProjectDrawing(drawingState: ProjectDrawingState): AppState = copy(projectDrawingState = drawingState)
+
+    /**
+     * Helper: Clear drawing state (when leaving FloorPlan mode)
+     */
+    fun clearProjectDrawing(): AppState = copy(projectDrawingState = null)
+
+    /**
+     * Helper: Update drawing state immutably
+     */
+    fun updateDrawingState(reducer: (ProjectDrawingState) -> ProjectDrawingState): AppState =
         copy(
-            vertices = vertices + (vertex.id to vertex),
-            activeVertexId = vertex.id,
+            projectDrawingState = projectDrawingState?.let(reducer),
         )
-
-    /**
-     * Helper: Add a line to the state immutably.
-     */
-    fun withLine(line: Line): AppState = copy(lines = lines + line)
-
-    /**
-     * Helper: Get the currently active vertex (for continuous drawing).
-     */
-    fun getActiveVertex(): Vertex? = activeVertexId?.let { vertices[it] }
 }

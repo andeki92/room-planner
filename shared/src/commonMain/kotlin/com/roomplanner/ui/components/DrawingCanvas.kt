@@ -5,6 +5,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -49,20 +50,55 @@ fun DrawingCanvas(
     modifier: Modifier = Modifier,
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val drawingState = state.projectDrawingState
+
+    // Early return if no drawing state
+    if (drawingState == null) {
+        Logger.w { "⚠ DrawingCanvas: No drawing state available" }
+        return
+    }
+
+    // CRITICAL: Store camera in a mutable ref that we update on every recomposition
+    // This allows the gesture handler to read the LATEST camera value
+    val cameraRef = remember { androidx.compose.runtime.mutableStateOf(drawingState.cameraTransform) }
+    val snapSettingsRef = remember { androidx.compose.runtime.mutableStateOf(drawingState.snapSettings) }
+
+    // Update refs on every recomposition (when state changes)
+    cameraRef.value = drawingState.cameraTransform
+    snapSettingsRef.value = drawingState.snapSettings
 
     Canvas(
         modifier =
             modifier
                 .fillMaxSize()
-                .pointerInput(state.cameraTransform) {
+                .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { screenOffset ->
                             coroutineScope.launch {
-                                handleTap(screenOffset, state, eventBus)
+                                // Read from ref (always has latest value)
+                                val camera = cameraRef.value
+                                val snapSettings = snapSettingsRef.value
+
+                                Logger.d { "→ Tap at screen (${screenOffset.x}, ${screenOffset.y})" }
+                                Logger.d { "  Camera: pan=(${camera.panX}, ${camera.panY}), zoom=${camera.zoom}" }
+
+                                // Convert screen → world using CURRENT camera
+                                val worldPoint = screenToWorld(screenOffset, camera)
+                                val snappedPoint = snapToGrid(worldPoint, snapSettings.gridSize)
+                                Logger.d {
+                                    "  World: (${worldPoint.x}, ${worldPoint.y}) → Snapped: (${snappedPoint.x}, ${snappedPoint.y})"
+                                }
+
+                                eventBus.emit(
+                                    GeometryEvent.PointPlaced(
+                                        position = snappedPoint,
+                                        snappedTo = null,
+                                    ),
+                                )
                             }
                         },
                     )
-                }.pointerInput(state.cameraTransform) {
+                }.pointerInput(Unit) {
                     detectTransformGestures(
                         panZoomLock = true, // Disable rotation
                     ) { centroid, pan, zoom, _ ->
@@ -73,13 +109,13 @@ fun DrawingCanvas(
                 },
     ) {
         // 1. Draw grid background
-        drawGrid(state.cameraTransform, state.snapSettings.gridSize, state.drawingConfig)
+        drawGrid(drawingState.cameraTransform, drawingState.snapSettings.gridSize, drawingState.drawingConfig)
 
         // 2. Draw lines (walls)
-        drawLines(state, state.cameraTransform, state.drawingConfig)
+        drawLines(drawingState, drawingState.cameraTransform, drawingState.drawingConfig)
 
         // 3. Draw vertices (snap points)
-        drawVertices(state, state.cameraTransform, state.drawingConfig)
+        drawVertices(drawingState, drawingState.cameraTransform, drawingState.drawingConfig)
     }
 }
 
@@ -88,17 +124,20 @@ fun DrawingCanvas(
  */
 private suspend fun handleTap(
     screenOffset: Offset,
-    state: AppState,
+    drawingState: com.roomplanner.data.models.ProjectDrawingState,
     eventBus: EventBus,
 ) {
     Logger.d { "→ Tap detected at screen (${screenOffset.x}, ${screenOffset.y})" }
 
     // Convert screen coordinates to world coordinates
-    val worldPoint = screenToWorld(screenOffset, state.cameraTransform)
+    val worldPoint = screenToWorld(screenOffset, drawingState.cameraTransform)
 
     // Apply grid snap
-    val snappedPoint = snapToGrid(worldPoint, state.snapSettings.gridSize)
+    val snappedPoint = snapToGrid(worldPoint, drawingState.snapSettings.gridSize)
 
+    Logger.d {
+        "  Camera: pan=(${drawingState.cameraTransform.panX}, ${drawingState.cameraTransform.panY}), zoom=${drawingState.cameraTransform.zoom}"
+    }
     Logger.d { "  World: (${worldPoint.x}, ${worldPoint.y}) → Snapped: (${snappedPoint.x}, ${snappedPoint.y})" }
 
     // Emit event (GeometryManager will handle state update)
@@ -239,11 +278,11 @@ private fun DrawScope.drawGrid(
  * Phase 1.2: Transform world coordinates to screen space
  */
 private fun DrawScope.drawLines(
-    state: AppState,
+    drawingState: com.roomplanner.data.models.ProjectDrawingState,
     camera: CameraTransform,
     config: com.roomplanner.data.models.DrawingConfig,
 ) {
-    state.lines.forEach { line ->
+    drawingState.lines.forEach { line ->
         // Convert world coordinates to screen coordinates
         val start = worldToScreen(line.geometry.start, camera)
         val end = worldToScreen(line.geometry.end, camera)
@@ -263,12 +302,12 @@ private fun DrawScope.drawLines(
  * Active vertex (last placed) is highlighted in blue.
  */
 private fun DrawScope.drawVertices(
-    state: AppState,
+    drawingState: com.roomplanner.data.models.ProjectDrawingState,
     camera: CameraTransform,
     config: com.roomplanner.data.models.DrawingConfig,
 ) {
-    state.vertices.values.forEach { vertex ->
-        val isActive = vertex.id == state.activeVertexId
+    drawingState.vertices.values.forEach { vertex ->
+        val isActive = vertex.id == drawingState.activeVertexId
         val color =
             when {
                 vertex.fixed -> config.vertexColorFixedCompose()

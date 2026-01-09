@@ -53,12 +53,18 @@ class GeometryManager(
         Logger.d { "→ PointPlaced at (${event.position.x}, ${event.position.y}), snappedTo=${event.snappedTo}" }
 
         val state = stateManager.state.value
+        val drawingState = state.projectDrawingState
+
+        if (drawingState == null) {
+            Logger.w { "⚠ No active project drawing state" }
+            return
+        }
 
         // Check if snapping to existing vertex
         val vertex =
             if (event.snappedTo != null) {
                 // Reuse existing vertex
-                state.vertices[event.snappedTo]?.also {
+                drawingState.vertices[event.snappedTo]?.also {
                     Logger.d { "  Reusing existing vertex: ${it.id}" }
                 }
             } else {
@@ -76,18 +82,22 @@ class GeometryManager(
         // Update state with new vertex (if not snapping to existing)
         if (event.snappedTo == null) {
             stateManager.updateState { state ->
-                state.withVertex(vertex)
+                state.updateDrawingState { drawingState ->
+                    drawingState.withVertex(vertex)
+                }
             }
         }
 
         // If continuing from previous vertex, create line
-        val previousVertex = state.getActiveVertex()
+        val previousVertex = drawingState.getActiveVertex()
         if (previousVertex != null && previousVertex.id != vertex.id) {
             createLine(previousVertex, vertex)
         } else if (event.snappedTo == null) {
             // First vertex or same vertex - just set as active
             stateManager.updateState { state ->
-                state.copy(activeVertexId = vertex.id)
+                state.updateDrawingState { drawingState ->
+                    drawingState.copy(activeVertexId = vertex.id)
+                }
             }
         }
     }
@@ -101,7 +111,9 @@ class GeometryManager(
         val line = Line.between(start, end)
 
         stateManager.updateState { state ->
-            state.withLine(line)
+            state.updateDrawingState { drawingState ->
+                drawingState.withLine(line)
+            }
         }
     }
 
@@ -109,7 +121,13 @@ class GeometryManager(
         Logger.d { "→ Camera transform: pan=(${event.panDelta.x}, ${event.panDelta.y}), zoom=${event.zoomDelta}" }
 
         stateManager.updateState { state ->
-            val currentCamera = state.cameraTransform
+            val drawingState = state.projectDrawingState
+            if (drawingState == null) {
+                Logger.w { "⚠ No active project drawing state for camera transform" }
+                return@updateState state
+            }
+
+            val currentCamera = drawingState.cameraTransform
 
             // 1. Apply zoom delta
             val newZoom =
@@ -156,7 +174,7 @@ class GeometryManager(
 
             Logger.d { "  Camera updated: pan=($newPanX, $newPanY), zoom=$newZoom" }
 
-            state.copy(cameraTransform = newCamera)
+            state.updateDrawingState { it.withCamera(newCamera) }
         }
     }
 

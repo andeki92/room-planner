@@ -4,7 +4,6 @@ import co.touchlab.kermit.Logger
 import com.roomplanner.data.models.Project
 import com.roomplanner.data.models.Settings
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
@@ -100,7 +99,58 @@ actual class FileStorage {
         runCatching {
             val projectDir = projectsDir.URLByAppendingPathComponent(projectId, isDirectory = true)!!
             fileManager.removeItemAtURL(projectDir, error = null)
-            Logger.i { "✓ Project deleted: $projectId" }
+            Logger.i { "✓ Project deleted: $projectId (metadata + drawing data)" }
+        }
+
+    actual suspend fun saveProjectDrawing(
+        projectId: String,
+        drawingState: com.roomplanner.data.models.ProjectDrawingState,
+    ): Result<Unit> =
+        runCatching {
+            val projectDir = projectsDir.URLByAppendingPathComponent(projectId, isDirectory = true)!!
+            createDirectoryIfNeeded(projectDir)
+
+            val drawingPath = projectDir.URLByAppendingPathComponent("drawing.json")!!.path!!
+            val jsonString = json.encodeToString(drawingState)
+
+            val success =
+                (jsonString as NSString).writeToFile(
+                    drawingPath,
+                    atomically = true,
+                    encoding = NSUTF8StringEncoding,
+                    error = null,
+                )
+
+            if (success) {
+                Logger.d { "✓ Drawing state saved for project: $projectId" }
+            } else {
+                throw Exception("Failed to write drawing file")
+            }
+        }
+
+    actual suspend fun loadProjectDrawing(projectId: String): Result<com.roomplanner.data.models.ProjectDrawingState> =
+        runCatching {
+            val drawingPath =
+                projectsDir
+                    .URLByAppendingPathComponent(projectId, isDirectory = true)!!
+                    .URLByAppendingPathComponent("drawing.json")!!
+                    .path!!
+
+            val jsonString =
+                NSString.stringWithContentsOfFile(
+                    drawingPath,
+                    encoding = NSUTF8StringEncoding,
+                    error = null,
+                )
+
+            if (jsonString != null) {
+                json.decodeFromString<com.roomplanner.data.models.ProjectDrawingState>(jsonString)
+            } else {
+                // New project - return empty drawing state
+                Logger.d { "No drawing.json found for project $projectId, returning empty state" }
+                com.roomplanner.data.models.ProjectDrawingState
+                    .empty()
+            }
         }
 
     actual suspend fun saveSettings(settings: Settings): Result<Unit> =
