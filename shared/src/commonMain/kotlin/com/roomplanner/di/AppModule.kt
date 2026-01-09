@@ -2,6 +2,7 @@ package com.roomplanner.di
 
 import com.roomplanner.data.StateManager
 import com.roomplanner.data.events.EventBus
+import com.roomplanner.domain.geometry.GeometryManager
 import org.koin.dsl.module
 
 /**
@@ -12,6 +13,9 @@ val commonModule =
         // Singletons
         single { EventBus() }
         single { StateManager() }
+
+        // Domain managers (event handlers)
+        single { GeometryManager(get(), get()) }
 
         // Platform-specific FileStorage is defined in platform modules
     }

@@ -26,6 +26,13 @@ interface Strings {
     val loadingProject: String
     val floorPlanMode: String
     val drawingCanvasComingSoon: String
+    val drawingInstructions: String
+
+    /**
+     * Formatted string showing number of vertices.
+     * Example: "5 points"
+     */
+    fun vertexCount(count: Int): String
 
     // ==================== Create Project Dialog ====================
     val newProjectTitle: String

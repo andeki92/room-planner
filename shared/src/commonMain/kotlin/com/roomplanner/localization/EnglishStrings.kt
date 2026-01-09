@@ -25,6 +25,9 @@ object EnglishStrings : Strings {
     override val loadingProject = "Loading..."
     override val floorPlanMode = "Floor Plan Mode"
     override val drawingCanvasComingSoon = "Drawing canvas implementation coming in Phase 1"
+    override val drawingInstructions = "Tap to place points • Lines connect automatically"
+
+    override fun vertexCount(count: Int) = "$count point${if (count != 1) "s" else ""}"
 
     // Create Project Dialog
     override val newProjectTitle = "New Project"

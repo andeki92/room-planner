@@ -29,7 +29,7 @@
 
 ## 🎯 Core Development Principles
 
-### 1. **ALWAYS Follow spec.md**
+### **ALWAYS Follow spec.md**
 
 The spec is the source of truth. Before implementing any feature:
 
@@ -37,7 +37,7 @@ The spec is the source of truth. Before implementing any feature:
 2. Follow the architectural patterns defined there
 3. If pattern unclear, ask user before deviating
 
-### 2. **Event-Driven Architecture (CRITICAL)**
+### **Event-Driven Architecture (CRITICAL)**
 
 **❌ WRONG: Direct state mutation**
 
@@ -91,7 +91,7 @@ class GeometryManager(
 
 **Why:** Decoupling, testability, undo/redo support, feature tree integration
 
-### 3. **Mode-Based Systems (Sealed Classes + Compose Navigation)**
+### **Mode-Based Systems (Sealed Classes + Compose Navigation)**
 
 Use sealed classes for type-safe mode management:
 
@@ -133,7 +133,7 @@ fun AppNavigation() {
 fun navigateTo(mode: String) { /* Error-prone! */ }
 ```
 
-### 4. **Feature Tree Integration**
+### **Feature Tree Integration**
 
 Every user operation must go through Command pattern:
 
@@ -153,7 +153,7 @@ class FeatureTree {
 }
 ```
 
-### 5. **Component Design (Immutable Data Classes)**
+### **Component Design (Immutable Data Classes)**
 
 **Topology components (BREP):**
 
@@ -190,7 +190,7 @@ data class Wall(
 )
 ```
 
-### 6. **Precision & Units**
+### **Precision & Units**
 
 - Use **Double** for geometry (not Float) - CAD precision required
 - Internal units: **centimeters** (consistent throughout)
@@ -205,7 +205,160 @@ data class Point2(
 )
 ```
 
-### 7. **Testing Requirements**
+### **Configuration Classes Pattern (CRITICAL)**
+
+**ALWAYS centralize related constants into serializable configuration data classes:**
+
+#### When to Use Configuration Classes
+
+Create a configuration class when you have:
+- Multiple related visual constants (sizes, colors, stroke widths)
+- Values that need experimentation to find "sweet spot"
+- Settings that might become user-configurable later
+- Constants scattered across multiple functions (magic numbers)
+
+#### Pattern Structure
+
+**❌ WRONG: Scattered magic numbers**
+
+```kotlin
+// DrawingCanvas.kt
+fun drawVertex() {
+    drawCircle(radius = 6f, color = Color.Green)  // Magic number!
+}
+
+// Another file
+fun drawLine() {
+    drawLine(strokeWidth = 3f, color = Color.Black)  // Magic number!
+}
+
+// Different file
+fun drawGrid() {
+    drawLine(strokeWidth = 1f, color = Color.LightGray.copy(alpha = 0.3f))  // Magic!
+}
+```
+
+**✅ CORRECT: Centralized configuration class**
+
+```kotlin
+// shared/commonMain/kotlin/com/roomplanner/data/models/DrawingConfig.kt
+@Serializable
+data class DrawingConfig(
+    // Vertex rendering
+    val vertexRadius: Float = 6f,
+    val vertexStrokeWidth: Float = 2f,
+    val vertexColorNormal: Long = 0xFF4CAF50,  // Green
+    val vertexColorActive: Long = 0xFF2196F3,  // Blue
+    val vertexColorFixed: Long = 0xFFF44336,   // Red
+
+    // Line rendering
+    val lineStrokeWidth: Float = 3f,
+    val lineColor: Long = 0xFF000000,  // Black
+
+    // Grid rendering
+    val gridLineWidth: Float = 1f,
+    val gridColor: Long = 0xFFD3D3D3,  // LightGray
+    val gridAlpha: Float = 0.3f,
+) {
+    companion object {
+        fun default() = DrawingConfig()
+
+        // Accessibility presets
+        fun largeTargets() = DrawingConfig(
+            vertexRadius = 10f,
+            lineStrokeWidth = 5f
+        )
+
+        fun highContrast() = DrawingConfig(
+            vertexColorNormal = 0xFF00FF00,  // Bright green
+            lineStrokeWidth = 4f,
+            gridAlpha = 0.5f
+        )
+    }
+
+    // Color conversion helpers (Long → Compose Color)
+    fun vertexColorNormalCompose() = Color(vertexColorNormal)
+    fun lineColorCompose() = Color(lineColor)
+    fun gridColorCompose() = Color(gridColor).copy(alpha = gridAlpha)
+}
+```
+
+#### Integration with AppState
+
+Add configuration to AppState for reactivity:
+
+```kotlin
+@Serializable
+data class AppState(
+    // ... other state
+    val drawingConfig: DrawingConfig = DrawingConfig.default(),
+) {
+    // Helper for updating config
+    fun withConfig(config: DrawingConfig) = copy(drawingConfig = config)
+}
+```
+
+#### Usage in Compose
+
+Pass config to rendering functions:
+
+```kotlin
+@Composable
+fun DrawingCanvas(state: AppState, eventBus: EventBus) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        // Use config values instead of hardcoded constants
+        drawGrid(state.cameraTransform, state.snapSettings.gridSize, state.drawingConfig)
+        drawLines(state, state.cameraTransform, state.drawingConfig)
+        drawVertices(state, state.cameraTransform, state.drawingConfig)
+    }
+}
+
+private fun DrawScope.drawVertices(
+    state: AppState,
+    camera: CameraTransform,
+    config: DrawingConfig,  // ✅ Config parameter
+) {
+    state.vertices.values.forEach { vertex ->
+        drawCircle(
+            color = config.vertexColorNormalCompose(),  // ✅ Use config
+            radius = config.vertexRadius,                // ✅ Use config
+            center = vertex.position.toOffset()
+        )
+    }
+}
+```
+
+#### Benefits
+
+1. **Single source of truth**: All related constants in one place
+2. **Easy experimentation**: Change one value, entire UI updates
+3. **Type-safe**: Compile-time checking, no string keys
+4. **Serializable**: Can save/load user preferences
+5. **Discoverable**: IDE autocomplete shows all available settings
+6. **Testable**: Can test with different configs (high contrast, large targets)
+7. **Future-proof**: Easy to add user settings UI later
+
+#### Real-World Example
+
+```kotlin
+// The poPhase 1.1: Developer uses default config
+val state = AppState(drawingConfig = DrawingConfig.default())
+
+// Phase 2: User enables accessibility mode
+val state = state.withConfig(DrawingConfig.largeTargets())
+
+// Phase 3: User customizes individual values
+val state = state.withConfig(
+    state.drawingConfig.copy(
+        vertexRadius = 8f,  // User's preference
+        lineStrokeWidth = 4f
+    )
+)
+```
+
+**Rule of thumb**: If you find yourself hardcoding visual constants in multiple places, create a configuration class first. It takes 5 minutes now and saves hours later.
+
+### **Testing Requirements**
 
 Every module needs:
 
@@ -230,7 +383,7 @@ class PolygonTest {
 }
 ```
 
-### 8. **Logging Requirements (CRITICAL)**
+### **Logging Requirements (CRITICAL)**
 
 **ALWAYS use Kermit for multiplatform logging:**
 
@@ -275,7 +428,7 @@ fun initApp() {
 }
 ```
 
-### 9. **Internationalization (i18n) - Compile-Time Safe (CRITICAL)**
+### **Internationalization (i18n) - Compile-Time Safe (CRITICAL)**
 
 **ALWAYS use the compile-time safe localization system for all user-facing text:**
 

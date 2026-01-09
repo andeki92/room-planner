@@ -9,10 +9,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
+import com.roomplanner.data.StateManager
+import com.roomplanner.data.events.EventBus
 import com.roomplanner.data.models.AppMode
 import com.roomplanner.data.models.Project
 import com.roomplanner.data.storage.FileStorage
 import com.roomplanner.localization.strings
+import com.roomplanner.ui.components.DrawingCanvas
 import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -22,10 +25,16 @@ fun FloorPlanScreen(
     onNavigate: (AppMode) -> Unit,
 ) {
     val fileStorage: FileStorage = koinInject()
+    val stateManager: StateManager = koinInject()
+    val eventBus: EventBus = koinInject()
+    val geometryManager: com.roomplanner.domain.geometry.GeometryManager = koinInject()
     val strings = strings()
 
     var project by remember { mutableStateOf<Project?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+
+    // Collect app state for drawing
+    val appState by stateManager.state.collectAsState()
 
     // Load project
     LaunchedEffect(projectId) {
@@ -60,25 +69,46 @@ fun FloorPlanScreen(
                 Modifier
                     .fillMaxSize()
                     .padding(paddingValues),
-            contentAlignment = Alignment.Center,
         ) {
             if (isLoading) {
-                CircularProgressIndicator()
-            } else {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = strings.floorPlanMode,
-                        style = MaterialTheme.typography.headlineMedium,
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = strings.drawingCanvasComingSoon,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    CircularProgressIndicator()
+                }
+            } else {
+                // Drawing canvas
+                DrawingCanvas(
+                    state = appState,
+                    eventBus = eventBus,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                // Status overlay (bottom)
+                Surface(
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                    shape = MaterialTheme.shapes.small,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = strings.drawingInstructions,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = strings.vertexCount(appState.vertices.size),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }

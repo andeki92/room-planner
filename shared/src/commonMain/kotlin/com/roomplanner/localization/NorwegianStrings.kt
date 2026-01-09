@@ -24,6 +24,9 @@ object NorwegianStrings : Strings {
     override val loadingProject = "Laster..."
     override val floorPlanMode = "Plantegning-modus"
     override val drawingCanvasComingSoon = "Implementering av tegneflate kommer i fase 1"
+    override val drawingInstructions = "Trykk for å plassere punkter • Linjer kobles automatisk"
+
+    override fun vertexCount(count: Int) = "$count punkt${if (count != 1) "er" else ""}"
 
     // Create Project Dialog
     override val newProjectTitle = "Nytt prosjekt"

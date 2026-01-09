@@ -11,6 +11,15 @@ plugins {
 }
 
 kotlin {
+    // Suppress expect/actual classes Beta warning
+    targets.all {
+        compilations.all {
+            compilerOptions.configure {
+                freeCompilerArgs.add("-Xexpect-actual-classes")
+            }
+        }
+    }
+
     androidTarget {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
