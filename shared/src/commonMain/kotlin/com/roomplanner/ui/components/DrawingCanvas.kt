@@ -12,14 +12,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import co.touchlab.kermit.Logger
 import com.roomplanner.data.events.EventBus
 import com.roomplanner.data.events.GeometryEvent
 import com.roomplanner.data.models.AppState
 import com.roomplanner.data.models.CameraTransform
+import com.roomplanner.data.models.SnapResult
 import com.roomplanner.domain.geometry.Point2
-import kotlinx.coroutines.launch
+import com.roomplanner.domain.snapping.SmartSnapSystem
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 /**
  * DrawingCanvas - Interactive canvas for CAD drawing with touch input.
@@ -51,6 +55,7 @@ fun DrawingCanvas(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val drawingState = state.projectDrawingState
+    val density = LocalDensity.current // Extract density for dp→px conversion
 
     // Early return if no drawing state
     if (drawingState == null) {
@@ -77,22 +82,49 @@ fun DrawingCanvas(
                             coroutineScope.launch {
                                 // Read from ref (always has latest value)
                                 val camera = cameraRef.value
-                                val snapSettings = snapSettingsRef.value
 
                                 Logger.d { "→ Tap at screen (${screenOffset.x}, ${screenOffset.y})" }
                                 Logger.d { "  Camera: pan=(${camera.panX}, ${camera.panY}), zoom=${camera.zoom}" }
 
                                 // Convert screen → world using CURRENT camera
                                 val worldPoint = screenToWorld(screenOffset, camera)
-                                val snappedPoint = snapToGrid(worldPoint, snapSettings.gridSize)
+
+                                // Apply smart snap (vertex > edge > perpendicular > grid)
+                                val snapResult =
+                                    drawingState?.let {
+                                        SmartSnapSystem.calculateSnap(
+                                            cursorWorld = worldPoint,
+                                            cursorScreen = screenOffset,
+                                            drawingState = it,
+                                            camera = camera,
+                                            density = density,
+                                        )
+                                    } ?: SnapResult.Grid(worldPoint)
+
+                                val (snappedPoint, snappedTo) =
+                                    when (snapResult) {
+                                        is SnapResult.None -> Pair(worldPoint, null)
+                                        is SnapResult.Grid -> Pair(snapResult.position, null)
+                                        is SnapResult.Vertex -> Pair(snapResult.position, snapResult.vertexId)
+                                        is SnapResult.Edge ->
+                                            Pair(
+                                                snapResult.position,
+                                                null,
+                                            ) // Edge snap creates new vertex
+                                        is SnapResult.Perpendicular -> Pair(snapResult.position, null)
+                                    }
+
                                 Logger.d {
                                     "  World: (${worldPoint.x}, ${worldPoint.y}) → Snapped: (${snappedPoint.x}, ${snappedPoint.y})"
+                                }
+                                if (snapResult is SnapResult.Vertex) {
+                                    Logger.i { "✓ Snapped to vertex: ${snapResult.vertexId}" }
                                 }
 
                                 eventBus.emit(
                                     GeometryEvent.PointPlaced(
                                         position = snappedPoint,
-                                        snappedTo = null,
+                                        snappedTo = snappedTo, // Pass vertex ID if snapped to existing vertex
                                     ),
                                 )
                             }
@@ -109,13 +141,13 @@ fun DrawingCanvas(
                 },
     ) {
         // 1. Draw grid background
-        drawGrid(drawingState.cameraTransform, drawingState.snapSettings.gridSize, drawingState.drawingConfig)
+        drawGrid(drawingState.cameraTransform, drawingState.snapSettings.gridSize, drawingState.drawingConfig, density)
 
         // 2. Draw lines (walls)
-        drawLines(drawingState, drawingState.cameraTransform, drawingState.drawingConfig)
+        drawLines(drawingState, drawingState.cameraTransform, drawingState.drawingConfig, density)
 
         // 3. Draw vertices (snap points)
-        drawVertices(drawingState, drawingState.cameraTransform, drawingState.drawingConfig)
+        drawVertices(drawingState, drawingState.cameraTransform, drawingState.drawingConfig, density)
     }
 }
 
@@ -231,11 +263,13 @@ private fun snapToGrid(
 /**
  * Draw grid background for visual reference.
  * Phase 1.2: Apply camera transform (grid moves/scales with viewport)
+ * Phase 1.3: Apply density for consistent line width across devices
  */
 private fun DrawScope.drawGrid(
     camera: CameraTransform,
     gridSize: Double,
     config: com.roomplanner.data.models.DrawingConfig,
+    density: Density,
 ) {
     val gridColor = config.gridColorCompose()
     val gridSizeScreen = (gridSize.toFloat() * camera.zoom) // Grid size in screen pixels
@@ -255,7 +289,7 @@ private fun DrawScope.drawGrid(
             color = gridColor,
             start = Offset(x, 0f),
             end = Offset(x, size.height),
-            strokeWidth = config.gridLineWidth,
+            strokeWidth = config.gridLineWidthPx(density),
         )
         x += gridSizeScreen
     }
@@ -267,7 +301,7 @@ private fun DrawScope.drawGrid(
             color = gridColor,
             start = Offset(0f, y),
             end = Offset(size.width, y),
-            strokeWidth = config.gridLineWidth,
+            strokeWidth = config.gridLineWidthPx(density),
         )
         y += gridSizeScreen
     }
@@ -276,11 +310,13 @@ private fun DrawScope.drawGrid(
 /**
  * Draw all lines (walls).
  * Phase 1.2: Transform world coordinates to screen space
+ * Phase 1.3: Apply density for consistent line width across devices
  */
 private fun DrawScope.drawLines(
     drawingState: com.roomplanner.data.models.ProjectDrawingState,
     camera: CameraTransform,
     config: com.roomplanner.data.models.DrawingConfig,
+    density: Density,
 ) {
     drawingState.lines.forEach { line ->
         // Convert world coordinates to screen coordinates
@@ -291,7 +327,7 @@ private fun DrawScope.drawLines(
             color = config.lineColorCompose(),
             start = start,
             end = end,
-            strokeWidth = config.lineStrokeWidth,
+            strokeWidth = config.lineStrokeWidthPx(density),
         )
     }
 }
@@ -305,6 +341,7 @@ private fun DrawScope.drawVertices(
     drawingState: com.roomplanner.data.models.ProjectDrawingState,
     camera: CameraTransform,
     config: com.roomplanner.data.models.DrawingConfig,
+    density: Density,
 ) {
     drawingState.vertices.values.forEach { vertex ->
         val isActive = vertex.id == drawingState.activeVertexId
@@ -320,16 +357,16 @@ private fun DrawScope.drawVertices(
 
         drawCircle(
             color = color,
-            radius = config.vertexRadius,
+            radius = config.vertexRadiusPx(density),
             center = screenPosition,
         )
 
         // Draw outline for better visibility
         drawCircle(
             color = config.vertexOutlineColorCompose(),
-            radius = config.vertexRadius,
+            radius = config.vertexRadiusPx(density),
             center = screenPosition,
-            style = Stroke(width = config.vertexStrokeWidth),
+            style = Stroke(width = config.vertexStrokeWidthPx(density)),
         )
     }
 }

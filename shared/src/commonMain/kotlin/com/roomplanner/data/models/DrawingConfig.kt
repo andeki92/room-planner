@@ -1,6 +1,8 @@
 package com.roomplanner.data.models
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Density
+import com.roomplanner.ui.utils.dpToPx
 import kotlinx.serialization.Serializable
 
 /**
@@ -25,15 +27,40 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class DrawingConfig(
     /**
-     * Radius of vertex circles in screen pixels.
-     * Default: 6f (visible but not obtrusive)
+     * Radius of vertex circles in density-independent pixels (dp).
+     * Default: 8dp - visible but not overwhelming on all screen densities
      */
-    val vertexRadius: Float = 6f,
+    val vertexRadiusDp: Float = 8f,
     /**
-     * Stroke width for vertex outline in screen pixels.
-     * Default: 2f (clear contrast)
+     * Stroke width for vertex outline in density-independent pixels (dp).
+     * Default: 1.5dp - clear contrast on all screens
      */
-    val vertexStrokeWidth: Float = 2f,
+    val vertexStrokeWidthDp: Float = 1.5f,
+    /**
+     * Stroke width for lines (walls) in density-independent pixels (dp).
+     * Default: 5dp - clearly visible for CAD work
+     */
+    val lineStrokeWidthDp: Float = 5f,
+    /**
+     * Stroke width for grid lines in density-independent pixels (dp).
+     * Default: 1dp - subtle background element
+     */
+    val gridLineWidthDp: Float = 1f,
+    /**
+     * Alpha transparency for grid lines (0.0 = invisible, 1.0 = opaque).
+     * Default: 0.3f (visible but subtle)
+     */
+    val gridAlpha: Float = 0.3f,
+    /**
+     * Radius for snap indicator circles in density-independent pixels (dp).
+     * Default: 20dp - clear feedback on all screens
+     */
+    val snapIndicatorRadiusDp: Float = 20f,
+    /**
+     * Alpha for snap indicators.
+     * Default: 0.8f (semi-transparent to not obscure geometry)
+     */
+    val snapIndicatorAlpha: Float = 0.8f,
     /**
      * Color for normal vertices (not active, not constrained).
      * Default: Green (0xFF4CAF50) - indicates clickable/editable
@@ -55,45 +82,20 @@ data class DrawingConfig(
      */
     val vertexOutlineColor: Long = 0xFFFFFFFF,
     /**
-     * Stroke width for lines (walls) in screen pixels.
-     * Default: 3f (clear but not overwhelming)
-     */
-    val lineStrokeWidth: Float = 3f,
-    /**
      * Color for lines.
      * Default: Black (0xFF000000) - high contrast, professional
      */
     val lineColor: Long = 0xFF000000,
-    /**
-     * Stroke width for grid lines in screen pixels.
-     * Default: 1f (subtle, background element)
-     */
-    val gridLineWidth: Float = 1f,
     /**
      * Color for grid lines.
      * Default: LightGray (0xFFD3D3D3)
      */
     val gridColor: Long = 0xFFD3D3D3,
     /**
-     * Alpha transparency for grid lines (0.0 = invisible, 1.0 = opaque).
-     * Default: 0.3f (visible but subtle)
-     */
-    val gridAlpha: Float = 0.3f,
-    /**
-     * Radius for snap indicator circles in screen pixels.
-     * Default: 10f (larger than vertex for visibility)
-     */
-    val snapIndicatorRadius: Float = 10f,
-    /**
      * Color for snap indicators.
      * Default: Orange (0xFFFF9800) - attention-grabbing
      */
     val snapIndicatorColor: Long = 0xFFFF9800,
-    /**
-     * Alpha for snap indicators.
-     * Default: 0.8f (semi-transparent to not obscure geometry)
-     */
-    val snapIndicatorAlpha: Float = 0.8f,
 ) {
     companion object {
         /**
@@ -110,10 +112,10 @@ data class DrawingConfig(
          */
         fun largeTargets() =
             DrawingConfig(
-                vertexRadius = 10f,
-                vertexStrokeWidth = 3f,
-                lineStrokeWidth = 5f,
-                snapIndicatorRadius = 15f,
+                vertexRadiusDp = 16f,
+                vertexStrokeWidthDp = 3f,
+                lineStrokeWidthDp = 7f,
+                snapIndicatorRadiusDp = 24f,
             )
 
         /**
@@ -129,15 +131,23 @@ data class DrawingConfig(
                 vertexColorActive = 0xFF0000FF, // Bright blue
                 vertexColorFixed = 0xFFFF0000, // Bright red
                 lineColor = 0xFF000000, // Pure black
-                lineStrokeWidth = 4f,
+                lineStrokeWidthDp = 6f,
                 gridAlpha = 0.5f, // More visible grid
             )
     }
 
-    /**
-     * Convert stored color Long to Compose Color.
-     * Colors are stored as Long (0xAARRGGBB) for serializability.
-     */
+    // Pixel conversion helpers (using density)
+    fun vertexRadiusPx(density: Density) = vertexRadiusDp.dpToPx(density)
+
+    fun vertexStrokeWidthPx(density: Density) = vertexStrokeWidthDp.dpToPx(density)
+
+    fun lineStrokeWidthPx(density: Density) = lineStrokeWidthDp.dpToPx(density)
+
+    fun gridLineWidthPx(density: Density) = gridLineWidthDp.dpToPx(density)
+
+    fun snapIndicatorRadiusPx(density: Density) = snapIndicatorRadiusDp.dpToPx(density)
+
+    // Color helpers (unchanged)
     fun vertexColorNormalCompose() = Color(vertexColorNormal)
 
     fun vertexColorActiveCompose() = Color(vertexColorActive)

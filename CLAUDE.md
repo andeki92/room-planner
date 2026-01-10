@@ -6,6 +6,7 @@
 > **Compose Multiplatform:** 1.8.0+ (iOS Stable)
 > **Philosophy:** Touch-first CAD, Mode-based UI, Parametric History, BREP Topology
 > **Target Users:** Professional contractors (speed + precision over aesthetics)
+> **Current Focus:** iOS development only (Android deliberately disabled)
 
 ---
 
@@ -560,6 +561,19 @@ Text(strings.deleteButton)
 - **Gradle:** 8.7.3+
 - **Android Target SDK:** 35
 - **iOS Deployment Target:** 17.2+ (Compose Multiplatform requirement)
+
+### Platform Status
+
+**IMPORTANT: Android Build Deliberately Disabled**
+
+- **Current Focus:** iOS development only
+- **Android SDK:** NOT configured (`ANDROID_HOME` deliberately unset)
+- **Rationale:** Focusing on iOS implementation first; Android support will be added later
+
+**DO NOT:**
+- Attempt to fix Android build issues or create `local.properties` with Android SDK path
+- Run Gradle builds (especially iOS simulator builds) - this is handled by the user/IDE
+- Execute `./gradlew` commands unless explicitly requested by the user
 
 ### build.gradle.kts Setup
 

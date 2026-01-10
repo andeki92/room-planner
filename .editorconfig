@@ -14,14 +14,29 @@ indent_size = 4
 [*.{kt,kts}]
 indent_size = 4
 max_line_length = 120
+
+# IntelliJ IDEA settings (ij_* prefix)
 ij_kotlin_allow_trailing_comma = true
 ij_kotlin_allow_trailing_comma_on_call_site = true
+ij_kotlin_code_style_defaults = KOTLIN_OFFICIAL
+ij_kotlin_name_count_to_use_star_import = 2147483647
+ij_kotlin_name_count_to_use_star_import_for_members = 2147483647
+ij_kotlin_imports_layout = *
+ij_continuation_indent_size = 4
 
+# ktlint rules (ktlint_* prefix)
 # Allow Compose naming convention (Composables start with uppercase)
 ktlint_standard_function-naming = disabled
 
 # Allow wildcard imports for Compose (common pattern)
 ktlint_standard_no-wildcard-imports = disabled
+
+# Disable import ordering (too opinionated, conflicts with IDE)
+ktlint_standard_import-ordering = disabled
+
+# Allow trailing commas (Kotlin official style)
+ktlint_standard_trailing-comma-on-call-site = disabled
+ktlint_standard_trailing-comma-on-declaration-site = disabled
 
 [*.{xml,gradle,gradle.kts}]
 indent_size = 4
