@@ -26,9 +26,13 @@ data class ProjectDrawingState(
     val cameraTransform: CameraTransform = CameraTransform.default(),
     // Drawing tool state
     val activeVertexId: String? = null, // Last placed vertex (for continuous drawing)
+    // Selection state (Phase 1.4)
+    val selectedVertexId: String? = null, // Currently selected vertex
     // Settings (project-specific overrides)
     val snapSettings: SnapSettings = SnapSettings.defaultImperial(),
     val drawingConfig: DrawingConfig = DrawingConfig.default(),
+    // Tool mode (Phase 1.4b)
+    val toolMode: ToolMode = ToolMode.DRAW, // Default to draw mode
 ) {
     companion object {
         /**
@@ -60,4 +64,24 @@ data class ProjectDrawingState(
      * Helper: Update camera transform
      */
     fun withCamera(camera: CameraTransform): ProjectDrawingState = copy(cameraTransform = camera)
+
+    /**
+     * Helper: Check if vertex is selected (Phase 1.4)
+     */
+    fun isVertexSelected(vertexId: String) = vertexId == selectedVertexId
+
+    /**
+     * Helper: Clear selection (Phase 1.4)
+     */
+    fun clearSelection() = copy(selectedVertexId = null)
+
+    /**
+     * Helper: Select vertex (Phase 1.4)
+     */
+    fun selectVertex(vertexId: String) = copy(selectedVertexId = vertexId)
+
+    /**
+     * Helper: Switch tool mode (Phase 1.4b)
+     */
+    fun withToolMode(mode: ToolMode) = copy(toolMode = mode)
 }

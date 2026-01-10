@@ -46,4 +46,8 @@ object NorwegianStrings : Strings {
     override val loading = "Laster..."
     override val back = "Tilbake"
     override val settings = "Innstillinger"
+
+    // Tool Mode (Phase 1.4b)
+    override val drawToolButton = "Tegn"
+    override val selectToolButton = "Velg"
 }

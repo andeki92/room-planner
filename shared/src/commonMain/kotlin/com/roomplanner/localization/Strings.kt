@@ -55,4 +55,8 @@ interface Strings {
     val loading: String
     val back: String
     val settings: String
+
+    // ==================== Tool Mode (Phase 1.4b) ====================
+    val drawToolButton: String
+    val selectToolButton: String
 }

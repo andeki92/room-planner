@@ -47,4 +47,8 @@ object EnglishStrings : Strings {
     override val loading = "Loading..."
     override val back = "Back"
     override val settings = "Settings"
+
+    // Tool Mode (Phase 1.4b)
+    override val drawToolButton = "Draw"
+    override val selectToolButton = "Select"
 }

@@ -1,12 +1,34 @@
 package com.roomplanner.ui.screens
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
 import com.roomplanner.data.StateManager
@@ -14,8 +36,12 @@ import com.roomplanner.data.events.EventBus
 import com.roomplanner.data.models.AppMode
 import com.roomplanner.data.models.Project
 import com.roomplanner.data.storage.FileStorage
+import com.roomplanner.domain.geometry.GeometryManager
 import com.roomplanner.localization.strings
 import com.roomplanner.ui.components.DrawingCanvas
+import com.roomplanner.ui.components.RadialToolMenu
+import com.roomplanner.ui.components.ToolModeFAB
+import com.roomplanner.ui.utils.dpToPx
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -30,7 +56,7 @@ fun FloorPlanScreen(
     val fileStorage: FileStorage = koinInject()
     val stateManager: StateManager = koinInject()
     val eventBus: EventBus = koinInject()
-    val geometryManager: com.roomplanner.domain.geometry.GeometryManager = koinInject()
+    val geometryManager: GeometryManager = koinInject()
     val strings = strings()
     val scope = rememberCoroutineScope()
 
@@ -39,6 +65,10 @@ fun FloorPlanScreen(
 
     // Collect app state for drawing
     val appState by stateManager.state.collectAsState()
+
+    // Phase 1.4b: Radial menu state
+    val showToolMenu = remember { mutableStateOf(false) }
+    val fabPosition = remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
     // Load project metadata and drawing state
     LaunchedEffect(projectId) {
@@ -112,6 +142,7 @@ fun FloorPlanScreen(
             )
         },
     ) { paddingValues ->
+        // Main content box - this is the coordinate space for both FAB and RadialMenu
         Box(
             modifier =
                 Modifier
@@ -155,6 +186,40 @@ fun FloorPlanScreen(
                             text = strings.vertexCount(appState.projectDrawingState?.vertices?.size ?: 0),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                appState.projectDrawingState?.let { drawingState ->
+                    ToolModeFAB(
+                        currentMode = drawingState.toolMode,
+                        onClick = { showToolMenu.value = true },
+                        onPositionMeasured = { fabPosition.value = it },
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                    )
+                }
+
+                if (showToolMenu.value) {
+                    appState.projectDrawingState?.let { drawingState ->
+                        RadialToolMenu(
+                            currentMode = drawingState.toolMode,
+                            anchorPosition = fabPosition.value - Offset(0f, 100f.dpToPx()),
+                            onToolSelected = { mode ->
+                                // FIX: Synchronous state update (no event bus race condition)
+                                stateManager.updateState { state ->
+                                    state.updateDrawingState { drawingState ->
+                                        val clearedSelection =
+                                            if (mode == com.roomplanner.data.models.ToolMode.DRAW) {
+                                                drawingState.clearSelection()
+                                            } else {
+                                                drawingState
+                                            }
+                                        clearedSelection.withToolMode(mode)
+                                    }
+                                }
+                                Logger.i { "✓ Tool mode changed: $mode" }
+                            },
+                            onDismiss = { showToolMenu.value = false },
                         )
                     }
                 }

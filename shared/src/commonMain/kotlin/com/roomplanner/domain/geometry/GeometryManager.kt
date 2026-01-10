@@ -46,6 +46,15 @@ class GeometryManager(
         when (event) {
             is GeometryEvent.PointPlaced -> handlePointPlaced(event)
             is GeometryEvent.CameraTransformed -> handleCameraTransformed(event)
+            // Selection events (Phase 1.4)
+            is GeometryEvent.VertexSelected -> handleVertexSelected(event)
+            is GeometryEvent.SelectionCleared -> handleSelectionCleared()
+            is GeometryEvent.VertexDragStarted -> handleVertexDragStarted(event)
+            is GeometryEvent.VertexDragged -> handleVertexDragged(event)
+            is GeometryEvent.VertexDragEnded -> handleVertexDragEnded(event)
+            is GeometryEvent.VertexDeleted -> handleVertexDeleted(event)
+            // Tool mode events (Phase 1.4b)
+            is GeometryEvent.ToolModeChanged -> handleToolModeChanged(event)
         }
     }
 
@@ -189,5 +198,90 @@ class GeometryManager(
         val worldX = ((screenOffset.x - camera.panX) / camera.zoom).toDouble()
         val worldY = ((screenOffset.y - camera.panY) / camera.zoom).toDouble()
         return Point2(worldX, worldY)
+    }
+
+    // Selection event handlers (Phase 1.4)
+
+    private suspend fun handleVertexSelected(event: GeometryEvent.VertexSelected) {
+        Logger.i { "✓ Vertex selected: ${event.vertexId}" }
+
+        stateManager.updateState { state ->
+            state.updateDrawingState { drawingState ->
+                drawingState.selectVertex(event.vertexId)
+            }
+        }
+    }
+
+    private suspend fun handleSelectionCleared() {
+        Logger.d { "→ Selection cleared" }
+
+        stateManager.updateState { state ->
+            state.updateDrawingState { drawingState ->
+                drawingState.clearSelection()
+            }
+        }
+    }
+
+    private suspend fun handleVertexDragStarted(event: GeometryEvent.VertexDragStarted) {
+        Logger.d { "→ Drag started: ${event.vertexId}" }
+        // Drag state tracked in DrawingCanvas (local UI state)
+    }
+
+    private suspend fun handleVertexDragged(event: GeometryEvent.VertexDragged) {
+        stateManager.updateState { state ->
+            state.updateDrawingState { drawingState ->
+                val vertex = drawingState.vertices[event.vertexId] ?: return@updateDrawingState drawingState
+                val updatedVertex = vertex.copy(position = event.newPosition)
+
+                drawingState.withVertex(updatedVertex)
+            }
+        }
+    }
+
+    private suspend fun handleVertexDragEnded(event: GeometryEvent.VertexDragEnded) {
+        Logger.i { "✓ Vertex moved: ${event.vertexId} → (${event.finalPosition.x}, ${event.finalPosition.y})" }
+        // Final position already applied in handleVertexDragged
+    }
+
+    private suspend fun handleVertexDeleted(event: GeometryEvent.VertexDeleted) {
+        Logger.i { "✓ Vertex deleted: ${event.vertexId}" }
+
+        stateManager.updateState { state ->
+            state.updateDrawingState { drawingState ->
+                // Remove vertex
+                val remainingVertices = drawingState.vertices.filterKeys { it != event.vertexId }
+
+                // Remove lines connected to deleted vertex
+                val remainingLines =
+                    drawingState.lines.filter { line ->
+                        line.startVertexId != event.vertexId &&
+                            line.endVertexId != event.vertexId
+                    }
+
+                drawingState.copy(
+                    vertices = remainingVertices,
+                    lines = remainingLines,
+                    selectedVertexId = null, // Clear selection after delete
+                )
+            }
+        }
+    }
+
+    private suspend fun handleToolModeChanged(event: GeometryEvent.ToolModeChanged) {
+        Logger.i { "✓ Tool mode changed: ${event.mode}" }
+
+        stateManager.updateState { state ->
+            state.updateDrawingState { drawingState ->
+                // Clear selection when switching to draw mode
+                val clearedSelection =
+                    if (event.mode == com.roomplanner.data.models.ToolMode.DRAW) {
+                        drawingState.clearSelection()
+                    } else {
+                        drawingState
+                    }
+
+                clearedSelection.withToolMode(event.mode)
+            }
+        }
     }
 }

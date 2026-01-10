@@ -96,6 +96,26 @@ data class DrawingConfig(
      * Default: Orange (0xFFFF9800) - attention-grabbing
      */
     val snapIndicatorColor: Long = 0xFFFF9800,
+    /**
+     * Touch target radius for selecting vertices in density-independent pixels (dp).
+     * Default: 44dp - iOS/Android minimum touch target guideline
+     */
+    val selectionRadiusDp: Float = 44f,
+    /**
+     * Visual glow ring radius for selected vertices in density-independent pixels (dp).
+     * Default: 12dp - visible feedback without obscuring nearby geometry
+     */
+    val selectionIndicatorRadiusDp: Float = 12f,
+    /**
+     * Color for selected vertices.
+     * Default: Yellow (0xFFFFEB3B) - distinct from normal/active/fixed
+     */
+    val selectedVertexColor: Long = 0xFFFFEB3B,
+    /**
+     * Alpha transparency for selection glow ring.
+     * Default: 0.3f - subtle highlight without obscuring geometry
+     */
+    val selectionGlowAlpha: Float = 0.3f,
 ) {
     companion object {
         /**
@@ -147,6 +167,10 @@ data class DrawingConfig(
 
     fun snapIndicatorRadiusPx(density: Density) = snapIndicatorRadiusDp.dpToPx(density)
 
+    fun selectionRadiusPx(density: Density) = selectionRadiusDp.dpToPx(density)
+
+    fun selectionIndicatorRadiusPx(density: Density) = selectionIndicatorRadiusDp.dpToPx(density)
+
     // Color helpers (unchanged)
     fun vertexColorNormalCompose() = Color(vertexColorNormal)
 
@@ -161,4 +185,6 @@ data class DrawingConfig(
     fun gridColorCompose() = Color(gridColor).copy(alpha = gridAlpha)
 
     fun snapIndicatorColorCompose() = Color(snapIndicatorColor).copy(alpha = snapIndicatorAlpha)
+
+    fun selectedVertexColorCompose() = Color(selectedVertexColor)
 }

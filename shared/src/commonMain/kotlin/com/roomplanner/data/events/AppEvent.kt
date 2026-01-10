@@ -3,6 +3,7 @@ package com.roomplanner.data.events
 import com.roomplanner.data.models.AppMode
 import com.roomplanner.data.models.MeasurementUnits
 import com.roomplanner.data.models.Project
+import com.roomplanner.data.models.ToolMode
 import com.roomplanner.domain.geometry.Point2
 
 /**
@@ -67,5 +68,65 @@ sealed interface GeometryEvent : AppEvent {
         val panDelta: androidx.compose.ui.geometry.Offset = androidx.compose.ui.geometry.Offset.Zero,
         val zoomDelta: Float = 1f,
         val zoomCenter: androidx.compose.ui.geometry.Offset? = null,
+    ) : GeometryEvent
+
+    /**
+     * User selected a vertex by tapping on it.
+     * @param vertexId ID of the selected vertex
+     */
+    data class VertexSelected(
+        val vertexId: String,
+    ) : GeometryEvent
+
+    /**
+     * User cleared selection by tapping empty space.
+     */
+    data object SelectionCleared : GeometryEvent
+
+    /**
+     * User started dragging a selected vertex.
+     * @param vertexId ID of vertex being dragged
+     * @param startPosition original position before drag
+     */
+    data class VertexDragStarted(
+        val vertexId: String,
+        val startPosition: Point2,
+    ) : GeometryEvent
+
+    /**
+     * User moved vertex during drag operation.
+     * @param vertexId ID of vertex being moved
+     * @param newPosition updated world position
+     */
+    data class VertexDragged(
+        val vertexId: String,
+        val newPosition: Point2,
+    ) : GeometryEvent
+
+    /**
+     * User finished dragging vertex.
+     * @param vertexId ID of moved vertex
+     * @param finalPosition final world position
+     */
+    data class VertexDragEnded(
+        val vertexId: String,
+        val finalPosition: Point2,
+    ) : GeometryEvent
+
+    /**
+     * User requested deletion of a vertex (via context menu).
+     * @param vertexId ID of vertex to delete
+     */
+    data class VertexDeleted(
+        val vertexId: String,
+    ) : GeometryEvent
+
+    /**
+     * User changed drawing tool mode (Draw vs Select).
+     * Phase 1.4b: Explicit tool mode system
+     * @param mode New tool mode
+     */
+    data class ToolModeChanged(
+        val mode: ToolMode,
     ) : GeometryEvent
 }
