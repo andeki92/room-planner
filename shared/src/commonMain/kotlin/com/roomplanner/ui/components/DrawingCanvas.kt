@@ -68,14 +68,16 @@ fun DrawingCanvas(
     // This allows the gesture handler to read the LATEST camera value
     val cameraRef = remember { androidx.compose.runtime.mutableStateOf(drawingState.cameraTransform) }
     val snapSettingsRef = remember { androidx.compose.runtime.mutableStateOf(drawingState.snapSettings) }
+    val toolModeRef = remember { androidx.compose.runtime.mutableStateOf(drawingState.toolMode) }
 
     // Update refs on every recomposition (when state changes)
     cameraRef.value = drawingState.cameraTransform
     snapSettingsRef.value = drawingState.snapSettings
+    toolModeRef.value = drawingState.toolMode
 
-    // Context menu state (Phase 1.4)
-    val contextMenuPosition = remember { androidx.compose.runtime.mutableStateOf<Offset?>(null) }
-    val contextMenuVertexId = remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    // Radial menu state (Phase 1.5)
+    val radialMenuPosition = remember { androidx.compose.runtime.mutableStateOf<Offset?>(null) }
+    val radialMenuVertexId = remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
 
     Canvas(
         modifier =
@@ -88,19 +90,19 @@ fun DrawingCanvas(
                                 // Read from ref (always has latest value)
                                 val camera = cameraRef.value
 
-                                // Dismiss context menu if open
-                                if (contextMenuPosition.value != null) {
-                                    contextMenuPosition.value = null
-                                    contextMenuVertexId.value = null
+                                // Dismiss radial menu if open
+                                if (radialMenuPosition.value != null) {
+                                    radialMenuPosition.value = null
+                                    radialMenuVertexId.value = null
                                     return@launch
                                 }
 
                                 Logger.d { "→ Tap at screen (${screenOffset.x}, ${screenOffset.y})" }
                                 Logger.d { "  Camera: pan=(${camera.panX}, ${camera.panY}), zoom=${camera.zoom}" }
-                                Logger.d { "  Tool mode: ${drawingState.toolMode}" }
+                                Logger.d { "  Tool mode: ${toolModeRef.value}" }
 
                                 // Tool mode-based behavior (Phase 1.4b)
-                                when (drawingState.toolMode) {
+                                when (toolModeRef.value) {
                                     com.roomplanner.data.models.ToolMode.DRAW -> {
                                         // DRAW MODE: Always place new vertex (ignore existing vertices)
                                         val worldPoint = screenToWorld(screenOffset, camera)
@@ -140,7 +142,7 @@ fun DrawingCanvas(
                                     }
 
                                     com.roomplanner.data.models.ToolMode.SELECT -> {
-                                        // SELECT MODE: Check for vertex selection
+                                        // SELECT MODE: Show radial menu on vertex tap
                                         val tappedVertexId =
                                             findTappedVertex(
                                                 tapScreen = screenOffset,
@@ -151,41 +153,25 @@ fun DrawingCanvas(
                                             )
 
                                         if (tappedVertexId != null) {
-                                            // Select vertex
-                                            Logger.d { "→ Tapped vertex: $tappedVertexId" }
-                                            eventBus.emit(GeometryEvent.VertexSelected(tappedVertexId))
-                                        } else if (drawingState.selectedVertexId != null) {
-                                            // Clear selection
-                                            Logger.d { "→ Cleared selection" }
-                                            eventBus.emit(GeometryEvent.SelectionCleared)
+                                            // Show radial menu at vertex position
+                                            val vertexWorldPos = drawingState.vertices[tappedVertexId]?.position
+                                            if (vertexWorldPos != null) {
+                                                val vertexScreenPos = worldToScreen(vertexWorldPos, camera)
+                                                Logger.d { "→ Tapped vertex: $tappedVertexId at $vertexScreenPos" }
+
+                                                // Show radial menu
+                                                radialMenuPosition.value = vertexScreenPos
+                                                radialMenuVertexId.value = tappedVertexId
+                                            }
+                                        } else if (radialMenuVertexId.value != null) {
+                                            // Tap outside - close menu
+                                            Logger.d { "→ Closed radial menu" }
+                                            radialMenuPosition.value = null
+                                            radialMenuVertexId.value = null
                                         }
                                         // Else: tap on empty space with no selection → do nothing
                                     }
                                 }
-                            }
-                        },
-                        onLongPress = { screenOffset ->
-                            // Phase 1.4b: Long-press only works in SELECT mode
-                            if (drawingState.toolMode !=
-                                com.roomplanner.data.models.ToolMode.SELECT
-                            ) {
-                                return@detectTapGestures
-                            }
-
-                            val camera = cameraRef.value
-                            val longPressedVertexId =
-                                findTappedVertex(
-                                    tapScreen = screenOffset,
-                                    drawingState = drawingState,
-                                    camera = camera,
-                                    density = density,
-                                    config = drawingState.drawingConfig,
-                                )
-
-                            if (longPressedVertexId != null && drawingState.isVertexSelected(longPressedVertexId)) {
-                                Logger.d { "→ Long-press on selected vertex: $longPressedVertexId" }
-                                contextMenuPosition.value = screenOffset
-                                contextMenuVertexId.value = longPressedVertexId
                             }
                         },
                     )
@@ -202,7 +188,7 @@ fun DrawingCanvas(
                     detectDragGestures(
                         onDragStart = { startOffset ->
                             // Drag only works in SELECT mode
-                            if (drawingState.toolMode !=
+                            if (toolModeRef.value !=
                                 com.roomplanner.data.models.ToolMode.SELECT
                             ) {
                                 return@detectDragGestures
@@ -285,22 +271,27 @@ fun DrawingCanvas(
         drawVertices(drawingState, drawingState.cameraTransform, drawingState.drawingConfig, density)
     }
 
-    // Overlay context menu (outside Canvas - Phase 1.4)
-    if (contextMenuPosition.value != null && contextMenuVertexId.value != null) {
-        VertexContextMenu(
-            position = contextMenuPosition.value!!,
+    // Overlay radial menu (outside Canvas - Phase 1.5)
+    if (radialMenuPosition.value != null && radialMenuVertexId.value != null) {
+        VertexRadialMenu(
+            anchorPosition = radialMenuPosition.value!!,
             onDelete = {
-                coroutineScope.launch {
-                    Logger.d { "→ Delete requested for vertex: ${contextMenuVertexId.value}" }
-                    eventBus.emit(GeometryEvent.VertexDeleted(contextMenuVertexId.value!!))
-                    contextMenuPosition.value = null
-                    contextMenuVertexId.value = null
+                // CRITICAL: Capture vertexId BEFORE clearing (prevents race condition)
+                val vertexIdToDelete = radialMenuVertexId.value
+
+                if (vertexIdToDelete != null) {
+                    coroutineScope.launch {
+                        Logger.i { "✓ Delete requested for vertex: $vertexIdToDelete" }
+                        eventBus.emit(GeometryEvent.VertexDeleted(vertexIdToDelete))
+                    }
+                } else {
+                    Logger.w { "⚠ Delete requested but no vertex selected" }
                 }
             },
             onDismiss = {
-                Logger.d { "→ Context menu dismissed" }
-                contextMenuPosition.value = null
-                contextMenuVertexId.value = null
+                Logger.d { "→ Radial menu dismissed" }
+                radialMenuPosition.value = null
+                radialMenuVertexId.value = null
             },
         )
     }

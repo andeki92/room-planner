@@ -10,8 +10,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -29,7 +28,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.roomplanner.data.models.ToolMode
 import com.roomplanner.localization.strings
 import kotlin.math.PI
 import kotlin.math.cos
@@ -37,54 +35,43 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * TRUE radial menu with drag-to-select interaction.
- * Items positioned in circle around FAB anchor point.
+ * Radial context menu for vertex actions.
+ * Appears when vertex is tapped in SELECT mode.
  *
- * Interaction:
- * 1. Press FAB → menu items fan out
- * 2. Drag finger to item → item highlights
- * 3. Release → item selected, menu closes
- * 4. Release outside → menu closes, no selection
+ * Phase 1.5: Single action (Delete)
+ * Future: Multiple actions (Edit, Properties, Merge)
  *
- * @param currentMode Currently active tool mode
- * @param anchorPosition Position of FAB center (screen coordinates)
- * @param onToolSelected Called when user releases on an item
- * @param onDismiss Called when menu should close
+ * @param anchorPosition Screen position of the vertex (center point)
+ * @param onDelete Callback when Delete action is selected
+ * @param onDismiss Callback to close the menu
  */
 @Composable
-fun RadialToolMenu(
-    currentMode: ToolMode,
+fun VertexRadialMenu(
     anchorPosition: Offset,
-    onToolSelected: (ToolMode) -> Unit,
+    onDelete: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    co.touchlab.kermit.Logger
-        .d { "RadialToolMenu shown at anchor: $anchorPosition, current mode: $currentMode" }
+    co.touchlab.kermit.Logger.d {
+        "VertexRadialMenu shown at anchor: $anchorPosition"
+    }
 
     val strings = strings()
-    var selectedItem by remember { mutableStateOf<ToolMode?>(null) }
+    var selectedItem by remember { mutableStateOf<VertexAction?>(null) }
 
     // Menu items with radial positions
-    // FAB is in bottom-right, so menu fans out in upper-left quadrant (90° to 180°)
     val items =
         listOf(
-            MenuItem(
-                mode = ToolMode.DRAW,
-                icon = Icons.Default.Edit,
-                label = strings.drawToolButton,
-                angle = 165f, // Near-left (15° from left)
-            ),
-            MenuItem(
-                mode = ToolMode.SELECT,
-                icon = Icons.Default.TouchApp,
-                label = strings.selectToolButton,
-                angle = 105f, // Near-top (15° from top)
+            VertexMenuItem(
+                action = VertexAction.DELETE,
+                icon = Icons.Default.Delete,
+                label = strings.deleteButton,
+                angle = 180f, // Left of vertex
             ),
         )
 
     // Radial menu parameters
-    val radius = 100.dp // Distance from FAB center
+    val radius = 80.dp // Distance from vertex center
     val itemSize = 56.dp // Size of each menu item
     val density = LocalDensity.current
 
@@ -92,7 +79,7 @@ fun RadialToolMenu(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f)) // Semi-transparent overlay
+                .background(Color.Black.copy(alpha = 0.5f)) // Dim background
                 .pointerInput(Unit) {
                     // Handle tap (for quick selection)
                     detectTapGestures(
@@ -101,7 +88,7 @@ fun RadialToolMenu(
                             val itemSizePx = with(density) { itemSize.toPx() }
 
                             co.touchlab.kermit.Logger.d {
-                                "RadialMenu: Tap at $tapPosition (anchor: $anchorPosition, radius: ${radiusPx}px)"
+                                "VertexMenu: Tap at $tapPosition (anchor: $anchorPosition)"
                             }
 
                             // Find which item was tapped
@@ -115,32 +102,36 @@ fun RadialToolMenu(
                                                 angle = item.angle,
                                             )
                                         val dist = distance(tapPosition, itemPosition)
-                                        co.touchlab.kermit.Logger.d {
-                                            "  Item ${item.mode} at $itemPosition (angle ${item.angle}°), distance: ${dist}px, threshold: ${itemSizePx / 2}px"
-                                        }
                                         dist < itemSizePx / 2
-                                    }?.mode
+                                    }?.action
 
                             if (tappedItem != null) {
-                                co.touchlab.kermit.Logger
-                                    .i { "✓ RadialMenu: Selected $tappedItem via tap" }
-                                onToolSelected(tappedItem)
+                                co.touchlab.kermit.Logger.i {
+                                    "✓ VertexMenu: Selected $tappedItem via tap"
+                                }
+                                when (tappedItem) {
+                                    VertexAction.DELETE -> {
+                                        onDelete()
+                                        onDismiss() // Dismiss AFTER action
+                                    }
+                                }
                             } else {
-                                co.touchlab.kermit.Logger
-                                    .d { "RadialMenu: Tap outside items, dismissing" }
+                                co.touchlab.kermit.Logger.d {
+                                    "VertexMenu: Tap outside items, dismissing"
+                                }
+                                onDismiss() // Only dismiss if tapped outside
                             }
-                            onDismiss()
                         },
                     )
                 }.pointerInput(Unit) {
                     // Handle drag (for drag-to-select)
                     detectDragGestures(
                         onDragStart = { startPosition ->
-                            co.touchlab.kermit.Logger
-                                .d { "RadialMenu: Drag started at $startPosition" }
+                            co.touchlab.kermit.Logger.d {
+                                "VertexMenu: Drag started at $startPosition"
+                            }
                         },
                         onDrag = { change, _ ->
-                            // Find which item the finger is over
                             val dragPosition = change.position
                             val previousSelection = selectedItem
                             selectedItem =
@@ -152,28 +143,38 @@ fun RadialToolMenu(
                                                 radius = with(density) { radius.toPx() },
                                                 angle = item.angle,
                                             )
-                                        distance(dragPosition, itemPosition) < with(density) { itemSize.toPx() } / 2
-                                    }?.mode
+                                        distance(dragPosition, itemPosition) <
+                                            with(density) { itemSize.toPx() } / 2
+                                    }?.action
 
                             if (selectedItem != previousSelection) {
-                                co.touchlab.kermit.Logger
-                                    .d { "RadialMenu: Drag selection changed to $selectedItem" }
+                                co.touchlab.kermit.Logger.d {
+                                    "VertexMenu: Drag selection changed to $selectedItem"
+                                }
                             }
                         },
                         onDragEnd = {
-                            co.touchlab.kermit.Logger
-                                .d { "RadialMenu: Drag ended, selectedItem: $selectedItem" }
-                            // Select the highlighted item
-                            selectedItem?.let {
-                                co.touchlab.kermit.Logger
-                                    .i { "✓ RadialMenu: Selected $it via drag" }
-                                onToolSelected(it)
+                            co.touchlab.kermit.Logger.d {
+                                "VertexMenu: Drag ended, selectedItem: $selectedItem"
                             }
-                            onDismiss()
+                            selectedItem?.let { action ->
+                                co.touchlab.kermit.Logger.i {
+                                    "✓ VertexMenu: Selected $action via drag"
+                                }
+                                when (action) {
+                                    VertexAction.DELETE -> {
+                                        onDelete()
+                                        onDismiss() // Dismiss AFTER action
+                                    }
+                                }
+                            } ?: run {
+                                // No action selected - dismiss anyway
+                                onDismiss()
+                            }
                         },
                         onDragCancel = {
                             co.touchlab.kermit.Logger
-                                .d { "RadialMenu: Drag cancelled" }
+                                .d { "VertexMenu: Drag cancelled" }
                             onDismiss()
                         },
                     )
@@ -188,12 +189,12 @@ fun RadialToolMenu(
                     angle = item.angle,
                 )
 
-            RadialMenuItem(
+            VertexMenuItemComposable(
                 icon = item.icon,
                 label = item.label,
                 position = itemPosition,
-                isActive = currentMode == item.mode,
-                isSelected = selectedItem == item.mode,
+                isDelete = item.action == VertexAction.DELETE,
+                isSelected = selectedItem == item.action,
                 size = itemSize,
             )
         }
@@ -203,15 +204,24 @@ fun RadialToolMenu(
 /**
  * Menu item data class.
  */
-private data class MenuItem(
-    val mode: ToolMode,
+private data class VertexMenuItem(
+    val action: VertexAction,
     val icon: ImageVector,
     val label: String,
-    val angle: Float, // In degrees: 0 = right, 90 = up, 180 = left, 270 = down
+    val angle: Float, // In degrees: 0 = right, 90 = down, 180 = left, 270 = up
 )
 
 /**
+ * Vertex action enum.
+ */
+private enum class VertexAction {
+    DELETE,
+    // Future: EDIT, PROPERTIES, MERGE
+}
+
+/**
  * Calculate radial position around anchor point.
+ * CRITICAL: Y is inverted for Compose coordinate system (top-left origin).
  */
 private fun calculateRadialPosition(
     anchor: Offset,
@@ -222,7 +232,7 @@ private fun calculateRadialPosition(
 
     return Offset(
         x = anchor.x + radius * cos(angleRad),
-        y = anchor.y - radius * sin(angleRad),
+        y = anchor.y - radius * sin(angleRad), // Inverted for Compose!
     )
 }
 
@@ -230,11 +240,11 @@ private fun calculateRadialPosition(
  * Individual radial menu item (circular button).
  */
 @Composable
-private fun RadialMenuItem(
+private fun VertexMenuItemComposable(
     icon: ImageVector,
     label: String,
     position: Offset,
-    isActive: Boolean,
+    isDelete: Boolean,
     isSelected: Boolean,
     size: Dp,
 ) {
@@ -252,14 +262,22 @@ private fun RadialMenuItem(
                 ).background(
                     color =
                         when {
-                            isActive -> MaterialTheme.colorScheme.primary
+                            isDelete && isSelected ->
+                                MaterialTheme.colorScheme.error.copy(alpha = 0.9f)
+
+                            isDelete -> MaterialTheme.colorScheme.errorContainer
                             isSelected -> MaterialTheme.colorScheme.primaryContainer
                             else -> MaterialTheme.colorScheme.surface
                         },
                     shape = CircleShape,
                 ).border(
-                    width = if (isActive) 2.dp else 0.dp,
-                    color = MaterialTheme.colorScheme.onPrimary,
+                    width = if (isSelected) 2.dp else 1.dp,
+                    color =
+                        if (isDelete) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        },
                     shape = CircleShape,
                 ),
         contentAlignment = Alignment.Center,
@@ -268,10 +286,10 @@ private fun RadialMenuItem(
             imageVector = icon,
             contentDescription = label,
             tint =
-                when {
-                    isActive -> MaterialTheme.colorScheme.onPrimary
-                    isSelected -> MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.onSurface
+                if (isDelete) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurface
                 },
             modifier = Modifier.size(24.dp),
         )

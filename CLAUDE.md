@@ -756,6 +756,54 @@ Canvas(
 }
 ```
 
+**CRITICAL: Compose Coordinate System**
+
+Compose uses a **top-left origin** coordinate system:
+- Origin (0, 0) is at the **top-left** corner
+- X increases **rightward**
+- Y increases **downward** (opposite of typical mathematical coordinates)
+
+**Implications for radial positioning:**
+
+When calculating radial positions using trigonometry, you must **invert the Y component** because sine increases upward in math, but Y increases downward in Compose:
+
+```kotlin
+// ❌ WRONG: Math coordinates (Y increases upward)
+fun calculateRadialPosition(anchor: Offset, radius: Float, angle: Float): Offset {
+    val angleRad = angle * PI.toFloat() / 180f
+    return Offset(
+        x = anchor.x + radius * cos(angleRad),
+        y = anchor.y + radius * sin(angleRad),  // WRONG: Y goes wrong direction!
+    )
+}
+
+// ✅ CORRECT: Compose coordinates (Y increases downward)
+fun calculateRadialPosition(anchor: Offset, radius: Float, angle: Float): Offset {
+    val angleRad = angle * PI.toFloat() / 180f
+    return Offset(
+        x = anchor.x + radius * cos(angleRad),
+        y = anchor.y - radius * sin(angleRad),  // Inverted for Compose!
+    )
+}
+```
+
+**Angle reference in Compose:**
+- 0° = Right (positive X direction)
+- 90° = **Down** (positive Y direction) - opposite of math!
+- 180° = Left (negative X direction)
+- 270° = **Up** (negative Y direction) - opposite of math!
+
+**Example: Positioning menu items in upper-left quadrant (FAB in bottom-right):**
+
+```kotlin
+val items = listOf(
+    MenuItem(angle = 165f),  // Near-left, slightly down
+    MenuItem(angle = 105f),  // Near-up, slightly left
+)
+
+// These angles work correctly because Y is inverted in calculateRadialPosition
+```
+
 #### 5. **AnimatedContent for Mode Transitions**
 
 Smooth transitions between modes:
