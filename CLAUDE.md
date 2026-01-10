@@ -1185,6 +1185,93 @@ data class Vertex(
 // Can save/load from storage
 ```
 
+### ❌ Mistake 8: Capturing State in Gesture Handlers (CRITICAL)
+
+**Problem:** Compose gesture handler closures capture state at composition time. When state updates (e.g., vertex deletion), the gesture handler still references the old captured state until the next recomposition creates a new closure. This causes **stale state bugs** like deleted vertices still being detected by snap system.
+
+**Wrong:**
+
+```kotlin
+@Composable
+fun DrawingCanvas(state: AppState) {
+    val drawingState = state.projectDrawingState
+
+    Canvas(modifier = Modifier
+        .pointerInput(Unit) {
+            detectTapGestures { offset ->
+                // ❌ Captures old drawingState at composition time!
+                SmartSnapSystem.calculateSnap(
+                    drawingState = drawingState,  // ❌ STALE!
+                    // ...
+                )
+            }
+        }
+    )
+}
+```
+
+**Symptoms:**
+- "Snap target vertex not found" warnings after deletion
+- Snapping to deleted vertices
+- Operations failing on missing entities
+- Race conditions between state updates and gesture events
+
+**Right:**
+
+```kotlin
+@Composable
+fun DrawingCanvas(state: AppState) {
+    val drawingState = state.projectDrawingState
+
+    // ✅ Use ref pattern: create mutable ref that updates every recomposition
+    val drawingStateRef = remember { mutableStateOf(drawingState) }
+    drawingStateRef.value = drawingState  // Update on every recomposition
+
+    Canvas(modifier = Modifier
+        .pointerInput(Unit) {
+            detectTapGestures { offset ->
+                // ✅ Read fresh state at event time, not composition time
+                val currentState = drawingStateRef.value
+                SmartSnapSystem.calculateSnap(
+                    drawingState = currentState,  // ✅ FRESH!
+                    // ...
+                )
+            }
+        }
+    )
+}
+```
+
+**Why This Works:**
+
+1. `drawingStateRef.value = drawingState` runs synchronously on every recomposition
+2. Gesture handlers read from `drawingStateRef.value` at event time (not composition time)
+3. State update → recomposition → ref updated → next event reads fresh value
+4. No race conditions, maintains gesture continuity
+
+**Rule for ALL Gesture Handlers:**
+
+ANY gesture handler that accesses state MUST:
+1. Read from a ref (`val currentState = stateRef.value`)
+2. Read at event time (in `onTap`, `onDrag`, etc.), not at composition time
+3. Add comment: `// ✅ Fresh state from ref`
+
+**Template:**
+
+```kotlin
+.pointerInput(Unit) {
+    detectSomeGesture { event ->
+        coroutineScope.launch {
+            // ✅ Read fresh state at event time
+            val currentDrawingState = drawingStateRef.value
+            val camera = cameraRef.value
+
+            // Use currentDrawingState, not captured drawingState
+        }
+    }
+}
+```
+
 ---
 
 ## 🎨 UI Conventions (Compose Multiplatform)

@@ -64,16 +64,18 @@ fun DrawingCanvas(
         return
     }
 
-    // CRITICAL: Store camera in a mutable ref that we update on every recomposition
-    // This allows the gesture handler to read the LATEST camera value
+    // CRITICAL: Store state in mutable refs that we update on every recomposition
+    // This allows gesture handlers to read the LATEST values, not stale captured state
     val cameraRef = remember { androidx.compose.runtime.mutableStateOf(drawingState.cameraTransform) }
     val snapSettingsRef = remember { androidx.compose.runtime.mutableStateOf(drawingState.snapSettings) }
     val toolModeRef = remember { androidx.compose.runtime.mutableStateOf(drawingState.toolMode) }
+    val drawingStateRef = remember { androidx.compose.runtime.mutableStateOf(drawingState) }
 
     // Update refs on every recomposition (when state changes)
     cameraRef.value = drawingState.cameraTransform
     snapSettingsRef.value = drawingState.snapSettings
     toolModeRef.value = drawingState.toolMode
+    drawingStateRef.value = drawingState // ✅ Keep drawing state fresh
 
     // Radial menu state (Phase 1.5)
     val radialMenuPosition = remember { androidx.compose.runtime.mutableStateOf<Offset?>(null) }
@@ -87,8 +89,9 @@ fun DrawingCanvas(
                     detectTapGestures(
                         onTap = { screenOffset ->
                             coroutineScope.launch {
-                                // Read from ref (always has latest value)
+                                // Read from refs (always has latest value)
                                 val camera = cameraRef.value
+                                val currentDrawingState = drawingStateRef.value // ✅ Fresh state
 
                                 // Dismiss radial menu if open
                                 if (radialMenuPosition.value != null) {
@@ -112,7 +115,7 @@ fun DrawingCanvas(
                                             SmartSnapSystem.calculateSnap(
                                                 cursorWorld = worldPoint,
                                                 cursorScreen = screenOffset,
-                                                drawingState = drawingState,
+                                                drawingState = currentDrawingState, // ✅ Fresh!
                                                 camera = camera,
                                                 density = density,
                                             )
@@ -146,15 +149,15 @@ fun DrawingCanvas(
                                         val tappedVertexId =
                                             findTappedVertex(
                                                 tapScreen = screenOffset,
-                                                drawingState = drawingState,
+                                                drawingState = currentDrawingState, // ✅ Fresh!
                                                 camera = camera,
                                                 density = density,
-                                                config = drawingState.drawingConfig,
+                                                config = currentDrawingState.drawingConfig, // ✅ Fresh!
                                             )
 
                                         if (tappedVertexId != null) {
                                             // Show radial menu at vertex position
-                                            val vertexWorldPos = drawingState.vertices[tappedVertexId]?.position
+                                            val vertexWorldPos = currentDrawingState.vertices[tappedVertexId]?.position
                                             if (vertexWorldPos != null) {
                                                 val vertexScreenPos = worldToScreen(vertexWorldPos, camera)
                                                 Logger.d { "→ Tapped vertex: $tappedVertexId at $vertexScreenPos" }
@@ -187,6 +190,9 @@ fun DrawingCanvas(
                     // Phase 1.4b: Drag gesture only works in SELECT mode
                     detectDragGestures(
                         onDragStart = { startOffset ->
+                            // Read fresh state at drag start
+                            val currentDrawingState = drawingStateRef.value // ✅ Fresh
+
                             // Drag only works in SELECT mode
                             if (toolModeRef.value !=
                                 com.roomplanner.data.models.ToolMode.SELECT
@@ -199,15 +205,15 @@ fun DrawingCanvas(
                             val draggedVertexId =
                                 findTappedVertex(
                                     tapScreen = startOffset,
-                                    drawingState = drawingState,
+                                    drawingState = currentDrawingState, // ✅ Fresh!
                                     camera = camera,
                                     density = density,
-                                    config = drawingState.drawingConfig,
+                                    config = currentDrawingState.drawingConfig, // ✅ Fresh!
                                 )
 
-                            if (draggedVertexId != null && drawingState.isVertexSelected(draggedVertexId)) {
+                            if (draggedVertexId != null && currentDrawingState.isVertexSelected(draggedVertexId)) {
                                 // Start dragging selected vertex
-                                val vertex = drawingState.vertices[draggedVertexId]!!
+                                val vertex = currentDrawingState.vertices[draggedVertexId]!!
                                 coroutineScope.launch {
                                     eventBus.emit(
                                         GeometryEvent.VertexDragStarted(
@@ -219,8 +225,10 @@ fun DrawingCanvas(
                             }
                         },
                         onDrag = { change, dragAmount ->
+                            // Read fresh state on each drag event
+                            val currentDrawingState = drawingStateRef.value // ✅ Fresh
                             val camera = cameraRef.value
-                            val selectedVertexId = drawingState.selectedVertexId ?: return@detectDragGestures
+                            val selectedVertexId = currentDrawingState.selectedVertexId ?: return@detectDragGestures
 
                             // Convert screen drag delta → world space
                             val dragWorld =
@@ -229,7 +237,8 @@ fun DrawingCanvas(
                                     y = (dragAmount.y / camera.zoom).toDouble(),
                                 )
 
-                            val currentVertex = drawingState.vertices[selectedVertexId] ?: return@detectDragGestures
+                            val currentVertex =
+                                currentDrawingState.vertices[selectedVertexId] ?: return@detectDragGestures
                             val newPosition =
                                 Point2(
                                     x = currentVertex.position.x + dragWorld.x,
@@ -246,8 +255,11 @@ fun DrawingCanvas(
                             }
                         },
                         onDragEnd = {
-                            val selectedVertexId = drawingState.selectedVertexId ?: return@detectDragGestures
-                            val finalVertex = drawingState.vertices[selectedVertexId] ?: return@detectDragGestures
+                            // Read fresh state at drag end
+                            val currentDrawingState = drawingStateRef.value // ✅ Fresh
+                            val selectedVertexId = currentDrawingState.selectedVertexId ?: return@detectDragGestures
+                            val finalVertex =
+                                currentDrawingState.vertices[selectedVertexId] ?: return@detectDragGestures
 
                             coroutineScope.launch {
                                 eventBus.emit(
