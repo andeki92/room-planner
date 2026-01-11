@@ -6,7 +6,6 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastForEach
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
@@ -57,8 +56,6 @@ suspend fun PointerInputScope.detectUnifiedGestures(callbacks: GestureCallbacks,
                 val downChange = down.changes.firstOrNull() ?: continue
 
                 if (!downChange.pressed) continue
-
-                Logger.d { "🔵 UnifiedGestureDetector: Pointer down at ${downChange.position}" }
 
                 val downPosition = downChange.position
                 val downTime = down.changes.first().uptimeMillis

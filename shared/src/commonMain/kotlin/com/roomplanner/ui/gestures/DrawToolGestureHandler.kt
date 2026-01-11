@@ -180,12 +180,6 @@ class DrawToolGestureHandler : ToolGestureHandler {
         // Tap places vertex immediately (same logic as handleRelease)
         val worldPoint = CoordinateConversion.screenToWorld(screenPosition, camera)
 
-        Logger.d {
-            "→ DRAW: Tap at screen (${screenPosition.x}, ${screenPosition.y}) → " +
-                "world (${worldPoint.x.toInt()}, ${worldPoint.y.toInt()}) " +
-                "(camera: pan=${camera.panX},${camera.panY}, zoom=${camera.zoom})"
-        }
-
         // Calculate final snap
         val snapResult =
             SmartSnapSystem.calculateSnap(

@@ -5,7 +5,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Density
-import co.touchlab.kermit.Logger
 import com.roomplanner.data.events.EventBus
 import com.roomplanner.data.models.CameraTransform
 import com.roomplanner.data.models.ProjectDrawingState
@@ -62,10 +61,7 @@ fun Modifier.canvasToolGestures(
                 ToolMode.SELECT -> SelectToolGestureHandler()
             }
 
-        Logger.d { "🔵 canvasToolGestures: Composed for mode $toolMode" }
-
         this.pointerInput(toolMode, drawingState.activeVertexId, drawingState.selectedVertexId) {
-            Logger.d { "🔵 canvasToolGestures: pointerInput block entered" }
             detectUnifiedGestures(
                 callbacks =
                     GestureCallbacks(
