@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -16,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -31,16 +33,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
 import com.roomplanner.data.StateManager
+import com.roomplanner.data.events.ConstraintEvent
 import com.roomplanner.data.events.EventBus
 import com.roomplanner.data.models.AppMode
 import com.roomplanner.data.models.Project
 import com.roomplanner.data.storage.FileStorage
+import com.roomplanner.domain.constraints.ConstraintSolver
 import com.roomplanner.domain.geometry.GeometryManager
 import com.roomplanner.localization.strings
 import com.roomplanner.ui.components.DrawingCanvas
 import com.roomplanner.ui.components.ToolModeFAB
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -54,14 +59,30 @@ fun FloorPlanScreen(
     val stateManager: StateManager = koinInject()
     val eventBus: EventBus = koinInject()
     val geometryManager: GeometryManager = koinInject()
+    val constraintSolver: ConstraintSolver = koinInject() // Phase 1.5: Eagerly instantiate
     val strings = strings()
     val scope = rememberCoroutineScope()
 
     var project by remember { mutableStateOf<Project?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
+    // Phase 4: Constraint conflict dialog state
+    var showConflictDialog by remember { mutableStateOf(false) }
+    var conflictMessage by remember { mutableStateOf("") }
+
     // Collect app state for drawing
     val appState by stateManager.state.collectAsState()
+
+    // Phase 4: Listen for constraint conflicts
+    LaunchedEffect(Unit) {
+        eventBus.events
+            .filterIsInstance<ConstraintEvent.ConstraintConflict>()
+            .collect { event ->
+                Logger.w { "⚠ Constraint conflict UI: ${event.message}" }
+                conflictMessage = event.message
+                showConflictDialog = true
+            }
+    }
 
     // Load project metadata and drawing state
     LaunchedEffect(projectId) {
@@ -207,5 +228,28 @@ fun FloorPlanScreen(
                 }
             }
         }
+    }
+
+    // Phase 4: Constraint conflict dialog
+    if (showConflictDialog) {
+        AlertDialog(
+            onDismissRequest = { showConflictDialog = false },
+            title = { Text(strings.constraintConflict) },
+            text = {
+                Column {
+                    Text(conflictMessage)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        strings.constraintConflictMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showConflictDialog = false }) {
+                    Text(strings.okButton)
+                }
+            },
+        )
     }
 }

@@ -1,6 +1,7 @@
 package com.roomplanner.data.events
 
 import com.roomplanner.data.models.AppMode
+import com.roomplanner.data.models.Constraint
 import com.roomplanner.data.models.MeasurementUnits
 import com.roomplanner.data.models.Project
 import com.roomplanner.data.models.ToolMode
@@ -129,4 +130,105 @@ sealed interface GeometryEvent : AppEvent {
     data class ToolModeChanged(
         val mode: ToolMode,
     ) : GeometryEvent
+
+    /**
+     * User selected a line by tapping on it.
+     * Phase 1.5: Line selection for radial menu
+     * @param lineId ID of the selected line
+     */
+    data class LineSelected(
+        val lineId: String,
+    ) : GeometryEvent
+
+    /**
+     * User requested deletion of a line (via radial menu).
+     * Phase 1.5: Line deletion
+     * @param lineId ID of line to delete
+     */
+    data class LineDeleted(
+        val lineId: String,
+    ) : GeometryEvent
+
+    /**
+     * User requested splitting a line at a point (via radial menu).
+     * Phase 1.5: Future feature - not implemented yet
+     * @param lineId ID of line to split
+     * @param splitPoint World coordinates where to split
+     */
+    data class LineSplit(
+        val lineId: String,
+        val splitPoint: Point2,
+    ) : GeometryEvent
+}
+
+/**
+ * Constraint events (Phase 1.5)
+ * User interactions with dimension constraints.
+ *
+ * Design rationale:
+ * - Follows event-driven architecture: UI emits events, ConstraintSolver reacts
+ * - Immutable constraint data passed with events
+ * - SolveConstraints is internal event (not directly user-triggered)
+ */
+sealed interface ConstraintEvent : AppEvent {
+    /**
+     * User added a dimension constraint to a line.
+     * Emitted from DimensionInputDialog when user confirms.
+     * @param constraint The new constraint to add
+     */
+    data class ConstraintAdded(
+        val constraint: Constraint,
+    ) : ConstraintEvent
+
+    /**
+     * User removed a constraint.
+     * Future feature - not implemented in Phase 1.5.
+     * @param constraintId ID of constraint to remove
+     */
+    data class ConstraintRemoved(
+        val constraintId: String,
+    ) : ConstraintEvent
+
+    /**
+     * User edited an existing constraint (changed dimension value).
+     * Emitted when user edits a line that already has a constraint.
+     * @param constraintId ID of existing constraint
+     * @param newConstraint Updated constraint with new values
+     */
+    data class ConstraintModified(
+        val constraintId: String,
+        val newConstraint: Constraint,
+    ) : ConstraintEvent
+
+    /**
+     * User toggled constraint enabled state.
+     * Future feature - not implemented in Phase 1.5.
+     * @param constraintId ID of constraint to toggle
+     * @param enabled New enabled state
+     */
+    data class ConstraintToggled(
+        val constraintId: String,
+        val enabled: Boolean,
+    ) : ConstraintEvent
+
+    /**
+     * Constraint solver requested (after geometry change).
+     * Internal event - emitted by GeometryManager after vertex moves.
+     * Not directly user-triggered.
+     */
+    data object SolveConstraints : ConstraintEvent
+
+    /**
+     * Constraint conflict detected (overconstrained system).
+     * Emitted by ConstraintSolver when adding/modifying constraint would
+     * create conflicting constraints (DOF < 0).
+     * UI should show error dialog to user.
+     *
+     * @param message Human-readable error message
+     * @param conflictingConstraints List of constraint IDs in conflict (optional)
+     */
+    data class ConstraintConflict(
+        val message: String,
+        val conflictingConstraints: List<String> = emptyList(),
+    ) : ConstraintEvent
 }

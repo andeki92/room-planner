@@ -59,4 +59,24 @@ interface Strings {
     // ==================== Tool Mode (Phase 1.4b) ====================
     val drawToolButton: String
     val selectToolButton: String
+
+    // ==================== Dimension Constraints (Phase 1.5) ====================
+    val setDimension: String
+    val length: String
+    val commonDimensions: String
+    val setButton: String
+    val splitLine: String
+
+    /**
+     * Formatted string confirming constraint was added.
+     * Example: "Dimension locked: 240.0 cm"
+     */
+    fun constraintAdded(dimension: String): String
+
+    val constraintConflict: String
+    val constraintConflictMessage: String
+    val overconstrainedSystem: String
+    val okButton: String
+    val showDimensions: String
+    val hideDimensions: String
 }

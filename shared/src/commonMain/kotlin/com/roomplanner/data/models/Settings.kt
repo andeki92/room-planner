@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class Settings(
-    val measurementUnits: MeasurementUnits = MeasurementUnits.IMPERIAL,
+    val measurementUnits: MeasurementUnits = MeasurementUnits.METRIC, // ✅ Default to metric
     val language: AppLanguage = getSystemLanguage(),
 ) {
     companion object {

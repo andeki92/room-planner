@@ -26,6 +26,9 @@ data class SnapSettings(
     val vertexSnapEnabled: Boolean = true,
     val edgeSnapEnabled: Boolean = true,
     val perpendicularSnapEnabled: Boolean = true,
+    // Right angle snap (to ACTIVE VERTEX, 90° guidance) - Phase 1+
+    val rightAngleSnapEnabled: Boolean = true,
+    val rightAngleSnapTolerance: Double = 2.5, // degrees, reduced from 5° for tighter snapping
     // Snap radius in density-independent pixels (dp) - scales with screen density
     // iOS/Android guideline: 44-48dp minimum touch target
     val vertexSnapRadiusDp: Float = 44f, // 44dp = ~132px on 3x density (iPhone)
@@ -102,5 +105,13 @@ sealed interface SnapResult {
         val lineId: String,
         val position: Point2,
         val angle: Double, // Angle of perpendicular in degrees
+    ) : SnapResult
+
+    /** Snapped to right angle (90°) relative to active vertex */
+    @Serializable
+    data class RightAngle(
+        val position: Point2,
+        val actualAngleDegrees: Double, // Angle before snapping
+        val snappedAngleDegrees: Double, // 0°, 90°, 180°, or 270°
     ) : SnapResult
 }

@@ -55,6 +55,10 @@ class GeometryManager(
             is GeometryEvent.VertexDeleted -> handleVertexDeleted(event)
             // Tool mode events (Phase 1.4b)
             is GeometryEvent.ToolModeChanged -> handleToolModeChanged(event)
+            // Line events (Phase 1.5)
+            is GeometryEvent.LineSelected -> handleLineSelected(event)
+            is GeometryEvent.LineDeleted -> handleLineDeleted(event)
+            is GeometryEvent.LineSplit -> handleLineSplit(event)
         }
     }
 
@@ -272,16 +276,86 @@ class GeometryManager(
 
         stateManager.updateState { state ->
             state.updateDrawingState { drawingState ->
-                // Clear selection when switching to draw mode
-                val clearedSelection =
-                    if (event.mode == com.roomplanner.data.models.ToolMode.DRAW) {
-                        drawingState.clearSelection()
-                    } else {
-                        drawingState
+                when (event.mode) {
+                    com.roomplanner.data.models.ToolMode.DRAW -> {
+                        // ✅ NEW: Transfer selection to active vertex when switching to DRAW
+                        val newActiveVertexId = drawingState.selectedVertexId
+
+                        if (newActiveVertexId != null) {
+                            Logger.i {
+                                "✓ Selection persisted: vertex $newActiveVertexId becomes active (origin point)"
+                            }
+                            drawingState
+                                .copy(
+                                    toolMode = com.roomplanner.data.models.ToolMode.DRAW,
+                                    activeVertexId = newActiveVertexId, // ✅ Selected → Active
+                                    selectedVertexId = null, // Clear selection (now active instead)
+                                )
+                        } else {
+                            // No selection, just switch to DRAW mode
+                            drawingState.withToolMode(com.roomplanner.data.models.ToolMode.DRAW)
+                        }
                     }
 
-                clearedSelection.withToolMode(event.mode)
+                    com.roomplanner.data.models.ToolMode.SELECT -> {
+                        // Switching to SELECT mode: clear active vertex
+                        drawingState
+                            .copy(
+                                toolMode = com.roomplanner.data.models.ToolMode.SELECT,
+                                activeVertexId = null, // No active vertex in SELECT mode
+                            )
+                    }
+                }
             }
         }
+    }
+
+    // Line event handlers (Phase 1.5)
+
+    private suspend fun handleLineSelected(event: GeometryEvent.LineSelected) {
+        Logger.i { "✓ Line selected: ${event.lineId}" }
+
+        stateManager.updateState { state ->
+            state.updateDrawingState { drawingState ->
+                drawingState.selectLine(event.lineId)
+            }
+        }
+    }
+
+    private suspend fun handleLineDeleted(event: GeometryEvent.LineDeleted) {
+        Logger.i { "✓ Line deleted: ${event.lineId}" }
+
+        stateManager.updateState { state ->
+            state.updateDrawingState { drawingState ->
+                // Remove line
+                val remainingLines = drawingState.lines.filter { it.id != event.lineId }
+
+                // Remove constraints associated with deleted line
+                val remainingConstraints =
+                    drawingState.constraints.filterValues { constraint ->
+                        when (constraint) {
+                            is com.roomplanner.data.models.Constraint.Distance ->
+                                constraint.lineId != event.lineId
+                            is com.roomplanner.data.models.Constraint.Angle ->
+                                constraint.lineId1 != event.lineId && constraint.lineId2 != event.lineId
+                            is com.roomplanner.data.models.Constraint.Parallel ->
+                                constraint.lineId1 != event.lineId && constraint.lineId2 != event.lineId
+                            is com.roomplanner.data.models.Constraint.Perpendicular ->
+                                constraint.lineId1 != event.lineId && constraint.lineId2 != event.lineId
+                        }
+                    }
+
+                drawingState.copy(
+                    lines = remainingLines,
+                    constraints = remainingConstraints,
+                    selectedLineId = null, // Clear line selection after delete
+                )
+            }
+        }
+    }
+
+    private suspend fun handleLineSplit(event: GeometryEvent.LineSplit) {
+        Logger.w { "⚠ Line split not implemented yet (future feature)" }
+        // Phase 2: Split line at point, creating new vertex and two new lines
     }
 }

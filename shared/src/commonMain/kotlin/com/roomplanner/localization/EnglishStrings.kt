@@ -51,4 +51,22 @@ object EnglishStrings : Strings {
     // Tool Mode (Phase 1.4b)
     override val drawToolButton = "Draw"
     override val selectToolButton = "Select"
+
+    // Dimension Constraints (Phase 1.5)
+    override val setDimension = "Set Dimension"
+    override val length = "Length"
+    override val commonDimensions = "Common:"
+    override val setButton = "Set"
+    override val splitLine = "Split Line"
+
+    override fun constraintAdded(dimension: String) = "Dimension locked: $dimension"
+
+    override val constraintConflict = "Constraint Conflict"
+    override val constraintConflictMessage =
+        "Cannot add this constraint - the system would be overconstrained. " +
+            "Remove existing constraints or adjust your drawing."
+    override val overconstrainedSystem = "System is overconstrained"
+    override val okButton = "OK"
+    override val showDimensions = "Show Dimensions"
+    override val hideDimensions = "Hide Dimensions"
 }

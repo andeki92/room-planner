@@ -19,8 +19,9 @@ import kotlin.math.sqrt
  * Priority order:
  * 1. Vertex snap (highest priority - closes shapes)
  * 2. Edge snap (snap to points on edges)
- * 3. Perpendicular snap (90° constraint from active vertex)
- * 4. Grid snap (fallback)
+ * 3. Perpendicular snap (90° constraint from last placed line)
+ * 4. Right angle snap (0°, 90°, 180°, 270° from active vertex)
+ * 5. Grid snap (fallback)
  *
  * All snap detection uses screen-space distance (pixels) for
  * consistent behavior regardless of zoom level.
@@ -89,7 +90,24 @@ object SmartSnapSystem {
             }
         }
 
-        // Priority 4: Grid snap (fallback)
+        // Priority 4: Right angle snap to ACTIVE VERTEX (90° guidance)
+        if (settings.rightAngleSnapEnabled && drawingState.activeVertexId != null) {
+            val rightAngleSnap =
+                findRightAngleSnap(
+                    cursorWorld,
+                    drawingState,
+                    settings.rightAngleSnapTolerance,
+                )
+            if (rightAngleSnap != null) {
+                Logger.d {
+                    "→ Snap: Right angle ${rightAngleSnap.actualAngleDegrees.toInt()}° → " +
+                        "${rightAngleSnap.snappedAngleDegrees.toInt()}°"
+                }
+                return rightAngleSnap
+            }
+        }
+
+        // Priority 5: Grid snap (fallback)
         if (settings.gridEnabled) {
             val gridSnap = snapToGrid(cursorWorld, settings.gridSize)
             Logger.d { "→ Snap: Grid at (${gridSnap.position.x}, ${gridSnap.position.y})" }
@@ -141,9 +159,12 @@ object SmartSnapSystem {
         var minDistance = Float.MAX_VALUE
 
         drawingState.lines.forEach { line ->
+            // ✅ Compute geometry from current vertex positions
+            val geometry = line.getGeometry(drawingState.vertices)
+
             // Convert line endpoints to screen space
-            val startScreen = worldToScreen(line.geometry.start, camera)
-            val endScreen = worldToScreen(line.geometry.end, camera)
+            val startScreen = worldToScreen(geometry.start, camera)
+            val endScreen = worldToScreen(geometry.end, camera)
 
             // Find nearest point on line segment (in screen space)
             val (nearestPoint, t) =
@@ -173,6 +194,78 @@ object SmartSnapSystem {
     }
 
     /**
+     * Find right angle snap during vertex placement.
+     * Checks if cursor angle relative to active vertex is close to 0°, 90°, 180°, or 270°.
+     *
+     * @param cursorWorld cursor position in world coordinates
+     * @param drawingState current drawing state
+     * @param angleTolerance degrees tolerance for snapping (typically 5°)
+     * @return SnapResult.RightAngle if within tolerance of cardinal angle, null otherwise
+     */
+    private fun findRightAngleSnap(
+        cursorWorld: Point2,
+        drawingState: ProjectDrawingState,
+        angleTolerance: Double,
+    ): SnapResult.RightAngle? {
+        val activeVertex = drawingState.getActiveVertex() ?: return null
+
+        // Calculate angle from active vertex to cursor
+        val dx = cursorWorld.x - activeVertex.position.x
+        val dy = cursorWorld.y - activeVertex.position.y
+        val distance = sqrt(dx * dx + dy * dy)
+
+        if (distance < 0.1) return null // Too close to active vertex
+
+        val angleRad = atan2(dy, dx)
+        val angleDeg = angleRad * 180.0 / PI
+
+        // Cardinal angles (0°, 90°, 180°, 270°)
+        val cardinalAngles = listOf(0.0, 90.0, 180.0, 270.0, -90.0, -180.0)
+
+        // Find closest cardinal angle (use degree-based difference)
+        val closestCardinal =
+            cardinalAngles.minByOrNull { cardinalAngle ->
+                val diff = abs(angleDeg - cardinalAngle)
+                val wrappedDiff = minOf(diff, abs(diff - 360.0), abs(diff + 360.0))
+                wrappedDiff
+            } ?: return null
+
+        // Calculate final difference
+        val angleDiff =
+            listOf(
+                abs(angleDeg - closestCardinal),
+                abs(angleDeg - closestCardinal - 360.0),
+                abs(angleDeg - closestCardinal + 360.0)
+            ).minOrNull() ?: return null
+
+        if (angleDiff < angleTolerance) {
+            // Snap cursor to exact cardinal angle
+            // Note: Y increases downward in world coordinates, so we use -dy for angle calculation
+            // but the snap position should maintain the same visual direction as the cursor
+            val snappedAngleRad = closestCardinal * PI / 180.0
+            val snappedPosition =
+                Point2(
+                    x = activeVertex.position.x + distance * cos(snappedAngleRad),
+                    y = activeVertex.position.y + distance * sin(snappedAngleRad),
+                )
+
+            Logger.d {
+                "→ Right angle snap: cursor at (${cursorWorld.x.toInt()}, ${cursorWorld.y.toInt()}), " +
+                    "snapped to (${snappedPosition.x.toInt()}, ${snappedPosition.y.toInt()}), " +
+                    "angle: ${angleDeg.toInt()}° → ${closestCardinal.toInt()}°"
+            }
+
+            return SnapResult.RightAngle(
+                position = snappedPosition,
+                actualAngleDegrees = angleDeg,
+                snappedAngleDegrees = closestCardinal,
+            )
+        }
+
+        return null
+    }
+
+    /**
      * Find perpendicular snap from active vertex.
      * Checks if cursor is within angle tolerance of perpendicular to any edge.
      */
@@ -184,11 +277,14 @@ object SmartSnapSystem {
         val activeVertex = drawingState.getActiveVertex() ?: return null
 
         drawingState.lines.forEach { line ->
+            // ✅ Compute geometry from current vertex positions
+            val geometry = line.getGeometry(drawingState.vertices)
+
             // Calculate perpendicular from active vertex to this line
             val edgeVector =
                 Point2(
-                    line.geometry.end.x - line.geometry.start.x,
-                    line.geometry.end.y - line.geometry.start.y,
+                    geometry.end.x - geometry.start.x,
+                    geometry.end.y - geometry.start.y,
                 )
             val edgeAngle = atan2(edgeVector.y, edgeVector.x)
             val perpAngle = edgeAngle + (PI / 2) // 90° rotation

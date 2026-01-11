@@ -50,4 +50,22 @@ object NorwegianStrings : Strings {
     // Tool Mode (Phase 1.4b)
     override val drawToolButton = "Tegn"
     override val selectToolButton = "Velg"
+
+    // Dimension Constraints (Phase 1.5)
+    override val setDimension = "Angi Dimensjon"
+    override val length = "Lengde"
+    override val commonDimensions = "Vanlige:"
+    override val setButton = "Angi"
+    override val splitLine = "Del Linje"
+
+    override fun constraintAdded(dimension: String) = "Dimensjon låst: $dimension"
+
+    override val constraintConflict = "Konflikt i Begrensninger"
+    override val constraintConflictMessage =
+        "Kan ikke legge til denne begrensningen - systemet vil bli overbegrenset. " +
+            "Fjern eksisterende begrensninger eller juster tegningen din."
+    override val overconstrainedSystem = "Systemet er overbegrenset"
+    override val okButton = "OK"
+    override val showDimensions = "Vis Dimensjoner"
+    override val hideDimensions = "Skjul Dimensjoner"
 }

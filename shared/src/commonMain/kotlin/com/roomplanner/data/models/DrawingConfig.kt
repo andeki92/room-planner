@@ -116,6 +116,42 @@ data class DrawingConfig(
      * Default: 0.3f - subtle highlight without obscuring geometry
      */
     val selectionGlowAlpha: Float = 0.3f,
+    /**
+     * Color for satisfied constraints (error < tolerance).
+     * Default: Green (0xFF4CAF50) - indicates constraint is met
+     * Phase 2: Constraint visual feedback
+     */
+    val constraintSatisfiedColor: Long = 0xFF4CAF50,
+    /**
+     * Color for solving constraints (iterations in progress).
+     * Default: Yellow (0xFFFFC107) - indicates constraint being adjusted
+     * Phase 2: Constraint visual feedback
+     */
+    val constraintSolvingColor: Long = 0xFFFFC107,
+    /**
+     * Color for violated constraints (error > tolerance).
+     * Default: Red (0xFFF44336) - indicates constraint not met
+     * Phase 2: Constraint visual feedback
+     */
+    val constraintViolatedColor: Long = 0xFFF44336,
+    /**
+     * Radius for constraint status indicator in density-independent pixels (dp).
+     * Default: 10dp - visible without obscuring dimension text
+     * Phase 2: Constraint visual feedback
+     */
+    val constraintIndicatorRadiusDp: Float = 10f,
+    /**
+     * Radius for anchor point indicator in density-independent pixels (dp).
+     * Default: 6dp - small pin icon on anchored vertices
+     * Phase 2: Anchor point visualization
+     */
+    val anchorIndicatorRadiusDp: Float = 6f,
+    /**
+     * Color for anchor point indicators.
+     * Default: Dark gray (0xFF424242) - subtle but visible
+     * Phase 2: Anchor point visualization
+     */
+    val anchorIndicatorColor: Long = 0xFF424242,
 ) {
     companion object {
         /**
@@ -171,6 +207,10 @@ data class DrawingConfig(
 
     fun selectionIndicatorRadiusPx(density: Density) = selectionIndicatorRadiusDp.dpToPx(density)
 
+    fun constraintIndicatorRadiusPx(density: Density) = constraintIndicatorRadiusDp.dpToPx(density)
+
+    fun anchorIndicatorRadiusPx(density: Density) = anchorIndicatorRadiusDp.dpToPx(density)
+
     // Color helpers (unchanged)
     fun vertexColorNormalCompose() = Color(vertexColorNormal)
 
@@ -187,4 +227,12 @@ data class DrawingConfig(
     fun snapIndicatorColorCompose() = Color(snapIndicatorColor).copy(alpha = snapIndicatorAlpha)
 
     fun selectedVertexColorCompose() = Color(selectedVertexColor)
+
+    fun constraintSatisfiedColorCompose() = Color(constraintSatisfiedColor)
+
+    fun constraintSolvingColorCompose() = Color(constraintSolvingColor)
+
+    fun constraintViolatedColorCompose() = Color(constraintViolatedColor)
+
+    fun anchorIndicatorColorCompose() = Color(anchorIndicatorColor)
 }
