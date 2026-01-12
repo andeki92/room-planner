@@ -4,7 +4,6 @@ import com.roomplanner.data.models.AppMode
 import com.roomplanner.data.models.Constraint
 import com.roomplanner.data.models.MeasurementUnits
 import com.roomplanner.data.models.Project
-import com.roomplanner.data.models.ToolMode
 import com.roomplanner.domain.geometry.Point2
 
 /**
@@ -124,15 +123,6 @@ sealed interface GeometryEvent : AppEvent {
      */
     data class VertexDeleted(
         val vertexId: String,
-    ) : GeometryEvent
-
-    /**
-     * User changed drawing tool mode (Draw vs Select).
-     * Phase 1.4b: Explicit tool mode system
-     * @param mode New tool mode
-     */
-    data class ToolModeChanged(
-        val mode: ToolMode,
     ) : GeometryEvent
 
     /**

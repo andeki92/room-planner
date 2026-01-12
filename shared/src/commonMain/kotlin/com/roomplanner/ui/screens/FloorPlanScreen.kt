@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,7 +42,6 @@ import com.roomplanner.domain.constraints.ConstraintSolver
 import com.roomplanner.domain.geometry.GeometryManager
 import com.roomplanner.localization.strings
 import com.roomplanner.ui.components.DrawingCanvas
-import com.roomplanner.ui.components.ToolModeFAB
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterIsInstance
@@ -202,29 +201,6 @@ fun FloorPlanScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                }
-
-                // Phase 1.4c: Self-contained FAB with radial menu
-                appState.projectDrawingState?.let { drawingState ->
-                    ToolModeFAB(
-                        currentMode = drawingState.toolMode,
-                        onToolSelected = { mode ->
-                            // Synchronous state update (no event bus race condition)
-                            stateManager.updateState { state ->
-                                state.updateDrawingState { drawingState ->
-                                    val clearedSelection =
-                                        if (mode == com.roomplanner.data.models.ToolMode.DRAW) {
-                                            drawingState.clearSelection()
-                                        } else {
-                                            drawingState
-                                        }
-                                    clearedSelection.withToolMode(mode)
-                                }
-                            }
-                            Logger.i { "✓ Tool mode changed: $mode" }
-                        },
-                        modifier = Modifier.align(Alignment.BottomEnd),
-                    )
                 }
             }
         }

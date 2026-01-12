@@ -3,7 +3,6 @@ package com.roomplanner.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -16,7 +15,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
 import com.roomplanner.data.events.ConstraintEvent
 import com.roomplanner.data.events.EventBus
@@ -28,10 +26,9 @@ import com.roomplanner.data.models.MeasurementUnits
 import com.roomplanner.data.models.ProjectDrawingState
 import com.roomplanner.data.models.SnapResult
 import com.roomplanner.data.models.SnapResultWithGuidelines
-import com.roomplanner.data.models.ToolMode
 import com.roomplanner.domain.drawing.Vertex
 import com.roomplanner.domain.geometry.Point2
-import com.roomplanner.ui.gestures.canvasToolGestures
+import com.roomplanner.ui.gestures.canvasGestures
 import com.roomplanner.ui.utils.CoordinateConversion
 import kotlin.math.abs
 import kotlin.math.pow
@@ -41,18 +38,23 @@ import kotlinx.coroutines.launch
 /**
  * DrawingCanvas - Interactive canvas for CAD drawing with touch input.
  *
- * Architecture (Refactored):
- * - Tool-specific gesture handling via ToolGestureHandler pattern
+ * Architecture:
+ * - Unified context-aware gestures (no DRAW/SELECT mode switching)
  * - Pure utility functions for coordinate conversion and hit testing
- * - Unified gesture detector (tap vs drag vs transform)
  * - Clean separation: gestures → handlers → events → state
+ *
+ * Gesture behavior:
+ * | Gesture     | On Vertex           | On Line    | On Empty Space          |
+ * |-------------|---------------------|------------|-------------------------|
+ * | Tap         | Select (activate)   | (nothing)  | Place new vertex        |
+ * | Drag        | Move vertex         | (nothing)  | Preview line → place    |
+ * | Long Press  | Vertex radial menu  | Line menu  | (nothing)               |
  *
  * Design rationale:
  * - Declarative rendering with Compose Canvas
  * - Event-driven: emits GeometryEvent, doesn't mutate state directly
  * - Skia-backed for hardware acceleration
  * - Immutable state for reactive rendering
- * - Compositional gesture handling (easy to extend)
  */
 @Composable
 fun DrawingCanvas(
@@ -88,12 +90,6 @@ fun DrawingCanvas(
     val previewLineEnd = remember { androidx.compose.runtime.mutableStateOf<Point2?>(null) }
     val snapHintResult = remember { androidx.compose.runtime.mutableStateOf<SnapResultWithGuidelines?>(null) }
 
-    // Clear preview states when tool mode changes (prevents ghost guides)
-    androidx.compose.runtime.LaunchedEffect(drawingState.toolMode) {
-        previewLineEnd.value = null
-        snapHintResult.value = null
-    }
-
     // Wrap in BoxWithConstraints to get canvas size for zoom initialization
     androidx.compose.foundation.layout.BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val screenWidthPx = constraints.maxWidth.toFloat()
@@ -106,10 +102,9 @@ fun DrawingCanvas(
                 val centeredPanY = constraints.maxHeight.toFloat() / 2f
 
                 eventBus.emit(
-                    com.roomplanner.data.events.GeometryEvent.CameraTransformed(
+                    GeometryEvent.CameraTransformed(
                         panDelta =
-                            androidx.compose.ui.geometry
-                                .Offset(centeredPanX, centeredPanY),
+                            Offset(centeredPanX, centeredPanY),
                         zoomDelta = defaultZoom,
                         zoomCenter = null,
                         screenWidthPx = screenWidthPx,
@@ -124,50 +119,34 @@ fun DrawingCanvas(
             modifier =
                 modifier
                     .fillMaxSize()
-                    // Tool-specific gestures (unified detector routes to appropriate handler)
-                    .canvasToolGestures(
-                        toolMode = drawingState.toolMode,
+                    // Unified context-aware gestures (no mode switching)
+                    .canvasGestures(
                         drawingState = drawingState,
                         camera = drawingState.cameraTransform,
                         density = density,
                         eventBus = eventBus,
                         onPreview = { previewLineEnd.value = it },
                         onSnapHint = { snapHintResult.value = it },
-                        onVertexTapped = { vertexId ->
-                            val vertex = drawingState.vertices[vertexId] ?: return@canvasToolGestures
-                            val vertexScreenPos =
-                                CoordinateConversion.worldToScreen(
-                                    vertex.position,
-                                    drawingState.cameraTransform,
-                                )
-
+                        onVertexLongPress = { vertexId, screenPos ->
                             // Close line menu if open
                             lineRadialMenuPosition.value = null
                             lineRadialMenuLineId.value = null
 
                             // Show vertex radial menu
-                            radialMenuPosition.value = vertexScreenPos
+                            radialMenuPosition.value = screenPos
                             radialMenuVertexId.value = vertexId
                         },
-                        onLineTapped = { lineId ->
-                            val line = drawingState.lines.find { it.id == lineId } ?: return@canvasToolGestures
-                            val lineMidpoint = line.getMidpoint(drawingState.vertices)
-                            val lineMidpointScreen =
-                                CoordinateConversion.worldToScreen(
-                                    lineMidpoint,
-                                    drawingState.cameraTransform,
-                                )
-
+                        onLineLongPress = { lineId, screenPos ->
                             // Close vertex menu if open
                             radialMenuPosition.value = null
                             radialMenuVertexId.value = null
 
                             // Show line radial menu
-                            lineRadialMenuPosition.value = lineMidpointScreen
+                            lineRadialMenuPosition.value = screenPos
                             lineRadialMenuLineId.value = lineId
                         },
                         onEmptyTapped = {
-                            // Dismiss radial menu if open
+                            // Dismiss radial menus if open
                             if (radialMenuPosition.value != null) {
                                 radialMenuPosition.value = null
                                 radialMenuVertexId.value = null
@@ -237,46 +216,6 @@ fun DrawingCanvas(
                     density = density,
                     units = state.settings.measurementUnits,
                 )
-            }
-        }
-
-        // Helpful instruction text (top-center overlay)
-        androidx.compose.foundation.layout.Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = androidx.compose.ui.Alignment.TopCenter,
-        ) {
-            if (drawingState.toolMode == ToolMode.SELECT) {
-                val instructionText =
-                    when {
-                        drawingState.activeVertexId != null ->
-                            "Vertex selected • Switch to DRAW to continue drawing"
-
-                        drawingState.vertices.isNotEmpty() ->
-                            "Tap vertex to select • Long press for options"
-
-                        else ->
-                            null
-                    }
-
-                if (instructionText != null) {
-                    androidx.compose.material3.Surface(
-                        modifier = Modifier.padding(16.dp),
-                        shape =
-                            androidx.compose.foundation.shape
-                                .RoundedCornerShape(8.dp),
-                        color =
-                            androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer
-                                .copy(alpha = 0.9f),
-                        shadowElevation = 4.dp,
-                    ) {
-                        androidx.compose.material3.Text(
-                            text = instructionText,
-                            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                    }
-                }
             }
         }
 
@@ -462,7 +401,7 @@ fun DrawingCanvas(
 
                         val angle1 = kotlin.math.atan2(dy1, dx1)
                         val angle2 = kotlin.math.atan2(dy2, dx2)
-                        kotlin.math.abs((angle2 - angle1) * 180.0 / kotlin.math.PI)
+                        abs((angle2 - angle1) * 180.0 / kotlin.math.PI)
                     } else {
                         90.0
                     }
@@ -556,11 +495,9 @@ private fun DrawScope.drawProjectBoundary(
                 height = bottomRight.y - topLeft.y,
             ),
         style =
-            androidx.compose.ui.graphics.drawscope.Stroke(
+            Stroke(
                 width = 2f * density.density,
-                pathEffect =
-                    PathEffect
-                        .dashPathEffect(floatArrayOf(20f, 10f)),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(20f, 10f)),
             ),
     )
 }
@@ -796,7 +733,7 @@ private fun DrawScope.drawGrid(
         val gridLineIndexX = startIndexX + index
         // Every 5th grid line (0, 5, 10, 15...) gets a thicker line
         // Use Math.floorMod to handle negative indices correctly
-        val isThickLine = kotlin.math.abs(gridLineIndexX) % 5 == 0
+        val isThickLine = abs(gridLineIndexX) % 5 == 0
 
         drawLine(
             color = gridColor,
@@ -815,7 +752,7 @@ private fun DrawScope.drawGrid(
         // Calculate actual grid line index in world space
         val gridLineIndexY = startIndexY + index
         // Every 5th grid line (0, 5, 10, 15...) gets a thicker line
-        val isThickLine = kotlin.math.abs(gridLineIndexY) % 5 == 0
+        val isThickLine = abs(gridLineIndexY) % 5 == 0
 
         drawLine(
             color = gridColor,
@@ -1085,9 +1022,9 @@ private fun DrawScope.drawAngleConstraint(
 
     val angle1 = kotlin.math.atan2(dy1, dx1)
     val angle2 = kotlin.math.atan2(dy2, dx2)
-    val currentAngleDegrees = kotlin.math.abs((angle2 - angle1) * 180.0 / kotlin.math.PI)
+    val currentAngleDegrees = abs((angle2 - angle1) * 180.0 / kotlin.math.PI)
 
-    val error = kotlin.math.abs(currentAngleDegrees - constraint.angle)
+    val error = abs(currentAngleDegrees - constraint.angle)
     val tolerance = 1.0 // 1 degree tolerance
 
     val constraintColor =
@@ -1099,15 +1036,14 @@ private fun DrawScope.drawAngleConstraint(
 
     // Draw arc indicator at vertex
     val vertexScreen = CoordinateConversion.worldToScreen(vertex.position, camera)
-    val arcRadius = config.constraintIndicatorRadiusPx(density) * 2.0f
+    config.constraintIndicatorRadiusPx(density) * 2.0f
 
     drawCircle(
         color = constraintColor,
         radius = config.constraintIndicatorRadiusPx(density),
         center = vertexScreen,
         style =
-            androidx.compose.ui.graphics.drawscope
-                .Stroke(width = 2f),
+            Stroke(width = 2f),
     )
 }
 
@@ -1175,7 +1111,7 @@ private fun DrawScope.drawPerpendicularConstraint(
     var relativeAngle = angle2 - angle1
     while (relativeAngle < 0) relativeAngle += 2 * kotlin.math.PI
     while (relativeAngle >= 2 * kotlin.math.PI) relativeAngle -= 2 * kotlin.math.PI
-    val currentAngleDegrees = kotlin.math.abs(relativeAngle * 180.0 / kotlin.math.PI)
+    val currentAngleDegrees = abs(relativeAngle * 180.0 / kotlin.math.PI)
 
     // Check if it's actually 90° (within tolerance)
     val is90Deg =
@@ -1191,15 +1127,14 @@ private fun DrawScope.drawPerpendicularConstraint(
 
     // Draw right-angle indicator (small square in corner)
     val vertexScreen = CoordinateConversion.worldToScreen(vertex.position, camera)
-    val squareSize = config.constraintIndicatorRadiusPx(density) * 1.5f
+    config.constraintIndicatorRadiusPx(density) * 1.5f
 
     drawCircle(
         color = constraintColor,
         radius = config.constraintIndicatorRadiusPx(density) * 0.7f,
         center = vertexScreen,
         style =
-            androidx.compose.ui.graphics.drawscope
-                .Stroke(width = 2f),
+            Stroke(width = 2f),
     )
 }
 

@@ -58,8 +58,6 @@ class GeometryManager(
             is GeometryEvent.VertexDragged -> handleVertexDragged(event)
             is GeometryEvent.VertexDragEnded -> handleVertexDragEnded(event)
             is GeometryEvent.VertexDeleted -> handleVertexDeleted(event)
-            // Tool mode events (Phase 1.4b)
-            is GeometryEvent.ToolModeChanged -> handleToolModeChanged(event)
             // Line events (Phase 1.5)
             is GeometryEvent.LineSelected -> handleLineSelected(event)
             is GeometryEvent.LineDeleted -> handleLineDeleted(event)
@@ -358,7 +356,7 @@ class GeometryManager(
 
     // Selection event handlers (Phase 1.4)
 
-    private suspend fun handleVertexSelected(event: GeometryEvent.VertexSelected) {
+    private fun handleVertexSelected(event: GeometryEvent.VertexSelected) {
         Logger.i { "✓ Vertex selected: ${event.vertexId} (now active for drawing)" }
 
         stateManager.updateState { state ->
@@ -373,7 +371,7 @@ class GeometryManager(
         }
     }
 
-    private suspend fun handleSelectionCleared() {
+    private fun handleSelectionCleared() {
         Logger.d { "→ Selection cleared" }
 
         stateManager.updateState { state ->
@@ -383,12 +381,12 @@ class GeometryManager(
         }
     }
 
-    private suspend fun handleVertexDragStarted(event: GeometryEvent.VertexDragStarted) {
+    private fun handleVertexDragStarted(event: GeometryEvent.VertexDragStarted) {
         Logger.d { "→ Drag started: ${event.vertexId}" }
         // Drag state tracked in DrawingCanvas (local UI state)
     }
 
-    private suspend fun handleVertexDragged(event: GeometryEvent.VertexDragged) {
+    private fun handleVertexDragged(event: GeometryEvent.VertexDragged) {
         stateManager.updateState { state ->
             state.updateDrawingState { drawingState ->
                 val vertex = drawingState.vertices[event.vertexId] ?: return@updateDrawingState drawingState
@@ -399,12 +397,12 @@ class GeometryManager(
         }
     }
 
-    private suspend fun handleVertexDragEnded(event: GeometryEvent.VertexDragEnded) {
+    private fun handleVertexDragEnded(event: GeometryEvent.VertexDragEnded) {
         Logger.i { "✓ Vertex moved: ${event.vertexId} → (${event.finalPosition.x}, ${event.finalPosition.y})" }
         // Final position already applied in handleVertexDragged
     }
 
-    private suspend fun handleVertexDeleted(event: GeometryEvent.VertexDeleted) {
+    private fun handleVertexDeleted(event: GeometryEvent.VertexDeleted) {
         Logger.i { "✓ Vertex deleted: ${event.vertexId}" }
 
         stateManager.updateState { state ->
@@ -428,48 +426,7 @@ class GeometryManager(
         }
     }
 
-    private suspend fun handleToolModeChanged(event: GeometryEvent.ToolModeChanged) {
-        Logger.i { "✓ Tool mode changed: ${event.mode}" }
-
-        stateManager.updateState { state ->
-            state.updateDrawingState { drawingState ->
-                when (event.mode) {
-                    com.roomplanner.data.models.ToolMode.DRAW -> {
-                        // ✅ NEW: Transfer selection to active vertex when switching to DRAW
-                        val newActiveVertexId = drawingState.selectedVertexId
-
-                        if (newActiveVertexId != null) {
-                            Logger.i {
-                                "✓ Selection persisted: vertex $newActiveVertexId becomes active (origin point)"
-                            }
-                            drawingState
-                                .copy(
-                                    toolMode = com.roomplanner.data.models.ToolMode.DRAW,
-                                    activeVertexId = newActiveVertexId, // ✅ Selected → Active
-                                    selectedVertexId = null, // Clear selection (now active instead)
-                                )
-                        } else {
-                            // No selection, just switch to DRAW mode
-                            drawingState.withToolMode(com.roomplanner.data.models.ToolMode.DRAW)
-                        }
-                    }
-
-                    com.roomplanner.data.models.ToolMode.SELECT -> {
-                        // Switching to SELECT mode: clear active vertex
-                        drawingState
-                            .copy(
-                                toolMode = com.roomplanner.data.models.ToolMode.SELECT,
-                                activeVertexId = null, // No active vertex in SELECT mode
-                            )
-                    }
-                }
-            }
-        }
-    }
-
-    // Line event handlers (Phase 1.5)
-
-    private suspend fun handleLineSelected(event: GeometryEvent.LineSelected) {
+    private fun handleLineSelected(event: GeometryEvent.LineSelected) {
         Logger.i { "✓ Line selected: ${event.lineId}" }
 
         stateManager.updateState { state ->
@@ -479,7 +436,7 @@ class GeometryManager(
         }
     }
 
-    private suspend fun handleLineDeleted(event: GeometryEvent.LineDeleted) {
+    private fun handleLineDeleted(event: GeometryEvent.LineDeleted) {
         Logger.i { "✓ Line deleted: ${event.lineId}" }
 
         stateManager.updateState { state ->
@@ -491,16 +448,16 @@ class GeometryManager(
                 val remainingConstraints =
                     drawingState.constraints.filterValues { constraint ->
                         when (constraint) {
-                            is com.roomplanner.data.models.Constraint.Distance ->
+                            is Constraint.Distance ->
                                 constraint.lineId != event.lineId
 
-                            is com.roomplanner.data.models.Constraint.Angle ->
+                            is Constraint.Angle ->
                                 constraint.lineId1 != event.lineId && constraint.lineId2 != event.lineId
 
-                            is com.roomplanner.data.models.Constraint.Parallel ->
+                            is Constraint.Parallel ->
                                 constraint.lineId1 != event.lineId && constraint.lineId2 != event.lineId
 
-                            is com.roomplanner.data.models.Constraint.Perpendicular ->
+                            is Constraint.Perpendicular ->
                                 constraint.lineId1 != event.lineId && constraint.lineId2 != event.lineId
                         }
                     }
@@ -514,7 +471,7 @@ class GeometryManager(
         }
     }
 
-    private suspend fun handleLineSplit(event: GeometryEvent.LineSplit) {
+    private fun handleLineSplit(event: GeometryEvent.LineSplit) {
         Logger.w { "⚠ Line split not implemented yet (future feature)" }
         // Phase 2: Split line at point, creating new vertex and two new lines
     }

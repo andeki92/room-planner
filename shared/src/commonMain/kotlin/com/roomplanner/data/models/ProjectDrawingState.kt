@@ -32,8 +32,6 @@ data class ProjectDrawingState(
     // Settings (project-specific overrides)
     val snapSettings: SnapSettings = SnapSettings.defaultImperial(),
     val drawingConfig: DrawingConfig = DrawingConfig.default(),
-    // Tool mode (Phase 1.4b)
-    val toolMode: ToolMode = ToolMode.DRAW, // Default to draw mode
     // Phase 1.5: Constraints
     val constraints: Map<String, Constraint> = emptyMap(),
     val showDimensions: Boolean = true, // Toggle dimension labels
@@ -86,11 +84,6 @@ data class ProjectDrawingState(
      * Helper: Select vertex (Phase 1.4)
      */
     fun selectVertex(vertexId: String) = copy(selectedVertexId = vertexId)
-
-    /**
-     * Helper: Switch tool mode (Phase 1.4b)
-     */
-    fun withToolMode(mode: ToolMode) = copy(toolMode = mode)
 
     /**
      * Helper: Add constraint immutably (Phase 1.5)

@@ -1,88 +1,80 @@
 package com.roomplanner.ui.gestures
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Density
 import com.roomplanner.data.events.EventBus
 import com.roomplanner.data.models.CameraTransform
 import com.roomplanner.data.models.ProjectDrawingState
 import com.roomplanner.data.models.SnapResultWithGuidelines
-import com.roomplanner.data.models.ToolMode
 import com.roomplanner.domain.geometry.Point2
-import com.roomplanner.ui.utils.HapticFeedback
-import com.roomplanner.ui.utils.HitTesting
+import com.roomplanner.ui.utils.CoordinateConversion
 import kotlinx.coroutines.launch
 
-// Note: Uses SnapResultWithGuidelines for multiple simultaneous snap guidelines
-
 /**
- * Canvas gesture modifier that routes gestures to tool-specific handlers.
+ * Canvas gesture modifier with unified context-aware gestures.
  *
  * Design rationale:
+ * - Single handler for all gestures (no mode switching)
+ * - Context-aware: gesture meaning depends on what you touch
  * - Composition over inheritance: modifiers compose cleanly
- * - Single responsibility: routing gestures to appropriate handler
- * - Testable: behavior fully determined by tool handler
- * - Extensible: add new tools by implementing ToolGestureHandler
  *
- * Architecture:
- * 1. User touches screen → UnifiedGestureDetector detects gesture type
- * 2. Gesture routed to appropriate ToolGestureHandler (DRAW/SELECT)
- * 3. Handler updates local UI state (onPreview, onSnapHint) or emits events
- * 4. Radial menu logic handled via callbacks (UI concern, not gesture concern)
+ * Gesture behavior:
+ * | Gesture     | On Vertex           | On Line    | On Empty Space          |
+ * |-------------|---------------------|------------|-------------------------|
+ * | Tap         | Select (activate)   | (nothing)  | Place new vertex        |
+ * | Drag        | Move vertex         | (nothing)  | Preview line → place    |
+ * | Long Press  | Vertex radial menu  | Line menu  | (nothing)               |
  *
- * @param toolMode Current tool mode (determines which handler to use)
  * @param drawingState Current drawing state (passed to handler)
  * @param camera Camera transform (for coordinate conversion)
  * @param density Screen density (for dp→px conversion)
  * @param eventBus Event bus for emitting events
  * @param onPreview Callback to update preview line state
  * @param onSnapHint Callback to update snap hint state
- * @param onVertexTapped Callback when vertex tapped (radial menu)
- * @param onLineTapped Callback when line tapped (radial menu)
- * @param onEmptyTapped Callback when empty space tapped (close menus)
+ * @param onVertexLongPress Callback when vertex is long-pressed (radial menu)
+ * @param onLineLongPress Callback when line is long-pressed (radial menu)
+ * @param onEmptyTapped Callback when empty space is tapped (close menus)
  */
-fun Modifier.canvasToolGestures(
-    toolMode: ToolMode,
+fun Modifier.canvasGestures(
     drawingState: ProjectDrawingState,
     camera: CameraTransform,
     density: Density,
     eventBus: EventBus,
     onPreview: (Point2?) -> Unit,
     onSnapHint: (SnapResultWithGuidelines?) -> Unit,
-    onVertexTapped: (String) -> Unit,
-    onLineTapped: (String) -> Unit,
+    onVertexLongPress: (vertexId: String, screenPosition: Offset) -> Unit,
+    onLineLongPress: (lineId: String, screenPosition: Offset) -> Unit,
     onEmptyTapped: () -> Unit,
 ): Modifier =
     composed {
         val scope = rememberCoroutineScope()
 
-        // Get tool-specific handler (factory pattern)
-        val handler: ToolGestureHandler =
-            when (toolMode) {
-                ToolMode.DRAW -> DrawToolGestureHandler()
-                ToolMode.SELECT -> SelectToolGestureHandler()
-            }
+        // Single unified handler (replaces DRAW/SELECT handlers)
+        val handler = remember { UnifiedGestureHandler() }
 
         // Ref pattern: prevents stale state bugs in gesture handlers
-        val drawingStateRef =
-            androidx.compose.runtime.remember {
-                androidx.compose.runtime.mutableStateOf(
-                    drawingState
-                )
-            }
+        val drawingStateRef = remember { mutableStateOf(drawingState) }
         drawingStateRef.value = drawingState
-        val cameraRef = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(camera) }
+        val cameraRef = remember { mutableStateOf(camera) }
         cameraRef.value = camera
-        val densityRef = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(density) }
+        val densityRef = remember { mutableStateOf(density) }
         densityRef.value = density
 
-        this.pointerInput(toolMode, drawingState.activeVertexId, drawingState.selectedVertexId) {
+        // Track last position for menu positioning
+        val lastScreenPositionRef = remember { mutableStateOf(Offset.Zero) }
+
+        this.pointerInput(drawingState.activeVertexId, drawingState.selectedVertexId) {
             detectUnifiedGestures(
                 callbacks =
                     GestureCallbacks(
                         onPress = { position ->
+                            lastScreenPositionRef.value = position
                             scope.launch {
                                 handler.handlePress(
                                     screenPosition = position,
@@ -96,6 +88,7 @@ fun Modifier.canvasToolGestures(
                             }
                         },
                         onDrag = { position, delta ->
+                            lastScreenPositionRef.value = position
                             scope.launch {
                                 handler.handleDrag(
                                     screenPosition = position,
@@ -128,7 +121,6 @@ fun Modifier.canvasToolGestures(
                                 val currentCamera = cameraRef.value
                                 val currentDensity = densityRef.value
 
-                                // Handle tool-specific tap logic
                                 handler.handleTap(
                                     screenPosition = position,
                                     drawingState = currentDrawingState,
@@ -139,71 +131,71 @@ fun Modifier.canvasToolGestures(
                                     onSnapHint = onSnapHint,
                                 )
 
-                                // Empty tap in SELECT mode dismisses menus
-                                if (toolMode == ToolMode.SELECT) {
-                                    // Check if tapped on empty space (not vertex/line)
-                                    val vertexId =
-                                        HitTesting.findVertexAt(
-                                            tapScreen = position,
-                                            drawingState = currentDrawingState,
-                                            camera = currentCamera,
-                                            density = currentDensity,
-                                            config = currentDrawingState.drawingConfig,
-                                        )
-                                    val lineId =
-                                        HitTesting.findLineAt(
-                                            tapScreen = position,
-                                            drawingState = currentDrawingState,
-                                            camera = currentCamera,
-                                            density = currentDensity,
-                                            config = currentDrawingState.drawingConfig,
-                                        )
+                                // Tap on empty space dismisses menus
+                                val vertexId =
+                                    com.roomplanner.ui.utils.HitTesting.findVertexAt(
+                                        tapScreen = position,
+                                        drawingState = currentDrawingState,
+                                        camera = currentCamera,
+                                        density = currentDensity,
+                                        config = currentDrawingState.drawingConfig,
+                                    )
+                                val lineId =
+                                    com.roomplanner.ui.utils.HitTesting.findLineAt(
+                                        tapScreen = position,
+                                        drawingState = currentDrawingState,
+                                        camera = currentCamera,
+                                        density = currentDensity,
+                                        config = currentDrawingState.drawingConfig,
+                                    )
 
-                                    if (vertexId == null && lineId == null) {
-                                        // Empty tap - dismiss menus
-                                        onEmptyTapped()
-                                    }
+                                if (vertexId == null && lineId == null) {
+                                    onEmptyTapped()
                                 }
                             }
                         },
                         onLongPress = { position ->
                             scope.launch {
-                                val currentDrawingState = drawingStateRef.value
-                                val currentCamera = cameraRef.value
-                                val currentDensity = densityRef.value
-
-                                // Handle radial menu (SELECT mode only, on long press)
-                                if (toolMode == ToolMode.SELECT) {
-                                    // Check for vertex long press
-                                    val vertexId =
-                                        HitTesting.findVertexAt(
-                                            tapScreen = position,
-                                            drawingState = currentDrawingState,
-                                            camera = currentCamera,
-                                            density = currentDensity,
-                                            config = currentDrawingState.drawingConfig,
-                                        )
-                                    if (vertexId != null) {
-                                        HapticFeedback.medium() // Haptic feedback when menu opens
-                                        onVertexTapped(vertexId)
-                                        return@launch
-                                    }
-
-                                    // Check for line long press
-                                    val lineId =
-                                        HitTesting.findLineAt(
-                                            tapScreen = position,
-                                            drawingState = currentDrawingState,
-                                            camera = currentCamera,
-                                            density = currentDensity,
-                                            config = currentDrawingState.drawingConfig,
-                                        )
-                                    if (lineId != null) {
-                                        HapticFeedback.medium() // Haptic feedback when menu opens
-                                        onLineTapped(lineId)
-                                        return@launch
-                                    }
-                                }
+                                handler.handleLongPress(
+                                    screenPosition = position,
+                                    drawingState = drawingStateRef.value,
+                                    camera = cameraRef.value,
+                                    density = densityRef.value,
+                                    eventBus = eventBus,
+                                    onVertexMenu = { vertexId ->
+                                        // Convert vertex position to screen for menu anchor
+                                        val vertex = drawingStateRef.value.vertices[vertexId]
+                                        if (vertex != null) {
+                                            val screenPos =
+                                                CoordinateConversion.worldToScreen(
+                                                    vertex.position,
+                                                    cameraRef.value,
+                                                )
+                                            onVertexLongPress(vertexId, screenPos)
+                                        }
+                                    },
+                                    onLineMenu = { lineId ->
+                                        // Convert line midpoint to screen for menu anchor
+                                        val line = drawingStateRef.value.lines.find { it.id == lineId }
+                                        if (line != null) {
+                                            val midpoint = line.getMidpoint(drawingStateRef.value.vertices)
+                                            val screenPos =
+                                                CoordinateConversion.worldToScreen(
+                                                    midpoint,
+                                                    cameraRef.value,
+                                                )
+                                            onLineLongPress(lineId, screenPos)
+                                        }
+                                    },
+                                )
+                            }
+                        },
+                        onCancel = {
+                            scope.launch {
+                                handler.handleCancel(
+                                    onPreview = onPreview,
+                                    onSnapHint = onSnapHint,
+                                )
                             }
                         },
                     ),
