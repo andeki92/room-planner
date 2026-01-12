@@ -8,10 +8,14 @@ import androidx.compose.ui.unit.Density
 import com.roomplanner.data.events.EventBus
 import com.roomplanner.data.models.CameraTransform
 import com.roomplanner.data.models.ProjectDrawingState
+import com.roomplanner.data.models.SnapResultWithGuidelines
 import com.roomplanner.data.models.ToolMode
 import com.roomplanner.domain.geometry.Point2
+import com.roomplanner.ui.utils.HapticFeedback
 import com.roomplanner.ui.utils.HitTesting
 import kotlinx.coroutines.launch
+
+// Note: Uses SnapResultWithGuidelines for multiple simultaneous snap guidelines
 
 /**
  * Canvas gesture modifier that routes gestures to tool-specific handlers.
@@ -46,7 +50,7 @@ fun Modifier.canvasToolGestures(
     density: Density,
     eventBus: EventBus,
     onPreview: (Point2?) -> Unit,
-    onSnapHint: (Point2?) -> Unit,
+    onSnapHint: (SnapResultWithGuidelines?) -> Unit,
     onVertexTapped: (String) -> Unit,
     onLineTapped: (String) -> Unit,
     onEmptyTapped: () -> Unit,
@@ -61,6 +65,19 @@ fun Modifier.canvasToolGestures(
                 ToolMode.SELECT -> SelectToolGestureHandler()
             }
 
+        // Ref pattern: prevents stale state bugs in gesture handlers
+        val drawingStateRef =
+            androidx.compose.runtime.remember {
+                androidx.compose.runtime.mutableStateOf(
+                    drawingState
+                )
+            }
+        drawingStateRef.value = drawingState
+        val cameraRef = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(camera) }
+        cameraRef.value = camera
+        val densityRef = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(density) }
+        densityRef.value = density
+
         this.pointerInput(toolMode, drawingState.activeVertexId, drawingState.selectedVertexId) {
             detectUnifiedGestures(
                 callbacks =
@@ -69,9 +86,9 @@ fun Modifier.canvasToolGestures(
                             scope.launch {
                                 handler.handlePress(
                                     screenPosition = position,
-                                    drawingState = drawingState,
-                                    camera = camera,
-                                    density = density,
+                                    drawingState = drawingStateRef.value,
+                                    camera = cameraRef.value,
+                                    density = densityRef.value,
                                     eventBus = eventBus,
                                     onPreview = onPreview,
                                     onSnapHint = onSnapHint,
@@ -83,9 +100,9 @@ fun Modifier.canvasToolGestures(
                                 handler.handleDrag(
                                     screenPosition = position,
                                     dragDelta = delta,
-                                    drawingState = drawingState,
-                                    camera = camera,
-                                    density = density,
+                                    drawingState = drawingStateRef.value,
+                                    camera = cameraRef.value,
+                                    density = densityRef.value,
                                     eventBus = eventBus,
                                     onPreview = onPreview,
                                     onSnapHint = onSnapHint,
@@ -96,9 +113,9 @@ fun Modifier.canvasToolGestures(
                             scope.launch {
                                 handler.handleRelease(
                                     screenPosition = position,
-                                    drawingState = drawingState,
-                                    camera = camera,
-                                    density = density,
+                                    drawingState = drawingStateRef.value,
+                                    camera = cameraRef.value,
+                                    density = densityRef.value,
                                     eventBus = eventBus,
                                     onPreview = onPreview,
                                     onSnapHint = onSnapHint,
@@ -107,47 +124,85 @@ fun Modifier.canvasToolGestures(
                         },
                         onTap = { position ->
                             scope.launch {
+                                val currentDrawingState = drawingStateRef.value
+                                val currentCamera = cameraRef.value
+                                val currentDensity = densityRef.value
+
                                 // Handle tool-specific tap logic
                                 handler.handleTap(
                                     screenPosition = position,
-                                    drawingState = drawingState,
-                                    camera = camera,
-                                    density = density,
+                                    drawingState = currentDrawingState,
+                                    camera = currentCamera,
+                                    density = currentDensity,
                                     eventBus = eventBus,
+                                    onPreview = onPreview,
+                                    onSnapHint = onSnapHint,
                                 )
 
-                                // Handle radial menu (SELECT mode only)
+                                // Empty tap in SELECT mode dismisses menus
                                 if (toolMode == ToolMode.SELECT) {
-                                    // Check for vertex tap
+                                    // Check if tapped on empty space (not vertex/line)
                                     val vertexId =
                                         HitTesting.findVertexAt(
                                             tapScreen = position,
-                                            drawingState = drawingState,
-                                            camera = camera,
-                                            density = density,
-                                            config = drawingState.drawingConfig,
+                                            drawingState = currentDrawingState,
+                                            camera = currentCamera,
+                                            density = currentDensity,
+                                            config = currentDrawingState.drawingConfig,
+                                        )
+                                    val lineId =
+                                        HitTesting.findLineAt(
+                                            tapScreen = position,
+                                            drawingState = currentDrawingState,
+                                            camera = currentCamera,
+                                            density = currentDensity,
+                                            config = currentDrawingState.drawingConfig,
+                                        )
+
+                                    if (vertexId == null && lineId == null) {
+                                        // Empty tap - dismiss menus
+                                        onEmptyTapped()
+                                    }
+                                }
+                            }
+                        },
+                        onLongPress = { position ->
+                            scope.launch {
+                                val currentDrawingState = drawingStateRef.value
+                                val currentCamera = cameraRef.value
+                                val currentDensity = densityRef.value
+
+                                // Handle radial menu (SELECT mode only, on long press)
+                                if (toolMode == ToolMode.SELECT) {
+                                    // Check for vertex long press
+                                    val vertexId =
+                                        HitTesting.findVertexAt(
+                                            tapScreen = position,
+                                            drawingState = currentDrawingState,
+                                            camera = currentCamera,
+                                            density = currentDensity,
+                                            config = currentDrawingState.drawingConfig,
                                         )
                                     if (vertexId != null) {
+                                        HapticFeedback.medium() // Haptic feedback when menu opens
                                         onVertexTapped(vertexId)
                                         return@launch
                                     }
 
-                                    // Check for line tap
+                                    // Check for line long press
                                     val lineId =
                                         HitTesting.findLineAt(
                                             tapScreen = position,
-                                            drawingState = drawingState,
-                                            camera = camera,
-                                            density = density,
-                                            config = drawingState.drawingConfig,
+                                            drawingState = currentDrawingState,
+                                            camera = currentCamera,
+                                            density = currentDensity,
+                                            config = currentDrawingState.drawingConfig,
                                         )
                                     if (lineId != null) {
+                                        HapticFeedback.medium() // Haptic feedback when menu opens
                                         onLineTapped(lineId)
                                         return@launch
                                     }
-
-                                    // Empty tap
-                                    onEmptyTapped()
                                 }
                             }
                         },

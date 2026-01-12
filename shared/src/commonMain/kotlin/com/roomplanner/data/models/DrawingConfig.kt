@@ -97,6 +97,36 @@ data class DrawingConfig(
      */
     val snapIndicatorColor: Long = 0xFFFF9800,
     /**
+     * Stroke width for snap guideline in density-independent pixels (dp).
+     * Default: 1.5dp - thin dashed line for visual guidance
+     */
+    val guidelineStrokeWidthDp: Float = 1.5f,
+    /**
+     * Alpha transparency for guidelines.
+     * Default: 0.6f - visible but not overwhelming
+     */
+    val guidelineAlpha: Float = 0.6f,
+    /**
+     * Dash length for guideline pattern in pixels.
+     * Default: 8f - short dashes for clean look
+     */
+    val guidelineDashLength: Float = 8f,
+    /**
+     * Gap length for guideline pattern in pixels.
+     * Default: 4f - short gaps between dashes
+     */
+    val guidelineGapLength: Float = 4f,
+    /**
+     * Color for alignment guidelines (horizontal/vertical alignment with other vertices).
+     * Default: Green (0xFF4CAF50) - indicates alignment guidance
+     */
+    val alignmentGuidelineColor: Long = 0xFF4CAF50,
+    /**
+     * Color for snap hint guidelines (snap to vertex, edge, right angle, etc.).
+     * Default: Orange (0xFFFF9800) - indicates snap guidance
+     */
+    val snapGuidelineColor: Long = 0xFFFF9800,
+    /**
      * Touch target radius for selecting vertices in density-independent pixels (dp).
      * Default: 44dp - iOS/Android minimum touch target guideline
      */
@@ -152,6 +182,27 @@ data class DrawingConfig(
      * Phase 2: Anchor point visualization
      */
     val anchorIndicatorColor: Long = 0xFF424242,
+    /**
+     * Default viewport width in centimeters (world units).
+     * Default: 500cm (5 meters) - good starting view for room-scale work
+     */
+    val defaultViewportWidthCm: Double = 500.0,
+    /**
+     * Minimum viewport width in centimeters (max zoom in).
+     * Default: 50cm (0.5 meters) - detailed view for precise work
+     */
+    val minViewportWidthCm: Double = 50.0,
+    /**
+     * Maximum viewport width in centimeters (max zoom out).
+     * Default: 5000cm (50 meters) - wide overview for large floor plans
+     */
+    val maxViewportWidthCm: Double = 5000.0,
+    /**
+     * Project boundary size in centimeters (world coordinates).
+     * Default: 5000cm (50 meters) - maximum extent of drawing area
+     * Prevents panning and zooming beyond this boundary.
+     */
+    val projectBoundaryCm: Double = 5000.0,
 ) {
     companion object {
         /**
@@ -207,6 +258,34 @@ data class DrawingConfig(
 
     fun selectionIndicatorRadiusPx(density: Density) = selectionIndicatorRadiusDp.dpToPx(density)
 
+    /**
+     * Calculate zoom level for a given viewport width (in cm) and screen width (in pixels).
+     * Zoom = screen pixels / world centimeters
+     *
+     * @param viewportWidthCm desired width of viewport in world coordinates (cm)
+     * @param screenWidthPx screen width in pixels
+     * @return zoom level to achieve the desired viewport width
+     */
+    fun calculateZoomForViewportWidth(
+        viewportWidthCm: Double,
+        screenWidthPx: Float,
+    ): Float = (screenWidthPx / viewportWidthCm).toFloat()
+
+    /**
+     * Calculate default zoom level for initial camera position.
+     */
+    fun defaultZoom(screenWidthPx: Float): Float = calculateZoomForViewportWidth(defaultViewportWidthCm, screenWidthPx)
+
+    /**
+     * Calculate minimum zoom level (max zoom out).
+     */
+    fun minZoom(screenWidthPx: Float): Float = calculateZoomForViewportWidth(maxViewportWidthCm, screenWidthPx)
+
+    /**
+     * Calculate maximum zoom level (max zoom in).
+     */
+    fun maxZoom(screenWidthPx: Float): Float = calculateZoomForViewportWidth(minViewportWidthCm, screenWidthPx)
+
     fun constraintIndicatorRadiusPx(density: Density) = constraintIndicatorRadiusDp.dpToPx(density)
 
     fun anchorIndicatorRadiusPx(density: Density) = anchorIndicatorRadiusDp.dpToPx(density)
@@ -235,4 +314,13 @@ data class DrawingConfig(
     fun constraintViolatedColorCompose() = Color(constraintViolatedColor)
 
     fun anchorIndicatorColorCompose() = Color(anchorIndicatorColor)
+
+    // Guideline helpers
+    fun guidelineStrokeWidthPx(density: Density) = guidelineStrokeWidthDp.dpToPx(density)
+
+    fun guidelineDashPattern() = floatArrayOf(guidelineDashLength, guidelineGapLength)
+
+    fun alignmentGuidelineColorCompose() = Color(alignmentGuidelineColor).copy(alpha = guidelineAlpha)
+
+    fun snapGuidelineColorCompose() = Color(snapGuidelineColor).copy(alpha = guidelineAlpha)
 }

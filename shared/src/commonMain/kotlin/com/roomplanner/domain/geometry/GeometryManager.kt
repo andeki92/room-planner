@@ -2,10 +2,15 @@ package com.roomplanner.domain.geometry
 
 import co.touchlab.kermit.Logger
 import com.roomplanner.data.StateManager
+import com.roomplanner.data.events.ConstraintEvent
 import com.roomplanner.data.events.EventBus
 import com.roomplanner.data.events.GeometryEvent
+import com.roomplanner.data.models.Constraint
 import com.roomplanner.domain.drawing.Line
 import com.roomplanner.domain.drawing.Vertex
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.atan2
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterIsInstance
@@ -128,6 +133,107 @@ class GeometryManager(
                 drawingState.withLine(line)
             }
         }
+
+        // Phase 1.6: Auto-detect 90° angles and create perpendicular constraints
+        // This makes rectangular shapes "sticky" - they stay rectangular when editing
+        autoDetectRightAngles(line)
+    }
+
+    /**
+     * Auto-detect if newly created line forms a 90° angle with adjacent lines.
+     * If so, create automatic Perpendicular constraint to preserve the right angle.
+     *
+     * Phase 1.6: Angle preservation feature
+     *
+     * Algorithm:
+     * 1. Find lines connected to the start vertex of new line
+     * 2. For each connected line, calculate angle between them
+     * 3. If angle is 85°-95° → snap to exactly 90°, create Perpendicular constraint
+     * 4. Repeat for end vertex
+     *
+     * Design rationale:
+     * - 85°-95° tolerance allows for imprecise touch input
+     * - Auto-constraints are marked userSet=false (can be disabled in settings)
+     * - Only creates constraint for FIRST right angle at each vertex (avoids duplicates)
+     */
+    private suspend fun autoDetectRightAngles(newLine: Line) {
+        val state = stateManager.state.value
+        val drawingState = state.projectDrawingState ?: return
+
+        // Find lines connected to start vertex (excluding the new line itself)
+        val startConnectedLines =
+            drawingState.lines
+                .filter { it.id != newLine.id }
+                .filter { it.startVertexId == newLine.startVertexId || it.endVertexId == newLine.startVertexId }
+
+        // Find lines connected to end vertex (excluding the new line itself)
+        val endConnectedLines =
+            drawingState.lines
+                .filter { it.id != newLine.id }
+                .filter { it.startVertexId == newLine.endVertexId || it.endVertexId == newLine.endVertexId }
+
+        // Check angle at start vertex
+        startConnectedLines.firstOrNull()?.let { adjacentLine ->
+            checkAndCreatePerpendicularConstraint(newLine, adjacentLine, drawingState)
+        }
+
+        // Check angle at end vertex
+        endConnectedLines.firstOrNull()?.let { adjacentLine ->
+            checkAndCreatePerpendicularConstraint(newLine, adjacentLine, drawingState)
+        }
+    }
+
+    /**
+     * Check if two lines form a right angle (85°-95°). If so, create Perpendicular constraint.
+     */
+    private suspend fun checkAndCreatePerpendicularConstraint(
+        line1: Line,
+        line2: Line,
+        drawingState: com.roomplanner.data.models.ProjectDrawingState
+    ) {
+        val geom1 = line1.getGeometry(drawingState.vertices)
+        val geom2 = line2.getGeometry(drawingState.vertices)
+
+        // Calculate angles (in radians)
+        val angle1 = atan2(geom1.end.y - geom1.start.y, geom1.end.x - geom1.start.x)
+        val angle2 = atan2(geom2.end.y - geom2.start.y, geom2.end.x - geom2.start.x)
+
+        // Calculate relative angle (normalize to -π to π)
+        var relativeAngle = angle2 - angle1
+        while (relativeAngle > PI) relativeAngle -= 2 * PI
+        while (relativeAngle < -PI) relativeAngle += 2 * PI
+
+        // Check if close to 90° (±5°)
+        val angleDegrees = abs(relativeAngle) * 180.0 / PI
+        val isRightAngle =
+            (angleDegrees >= 85.0 && angleDegrees <= 95.0) ||
+                (angleDegrees >= 265.0 && angleDegrees <= 275.0) // 270° = -90°
+
+        if (isRightAngle) {
+            Logger.i { "✓ Right angle detected: $angleDegrees° → creating Perpendicular constraint" }
+
+            // Check if perpendicular constraint already exists for these lines
+            val existingConstraint =
+                drawingState.constraints.values
+                    .filterIsInstance<Constraint.Perpendicular>()
+                    .any {
+                        (it.lineId1 == line1.id && it.lineId2 == line2.id) ||
+                            (it.lineId1 == line2.id && it.lineId2 == line1.id)
+                    }
+
+            if (!existingConstraint) {
+                val perpendicularConstraint =
+                    Constraint.Perpendicular(
+                        lineId1 = line1.id,
+                        lineId2 = line2.id,
+                        enabled = true,
+                        userSet = false, // Auto-generated
+                    )
+
+                // Emit event to add constraint
+                eventBus.emit(ConstraintEvent.ConstraintAdded(perpendicularConstraint))
+            }
+        }
     }
 
     private suspend fun handleCameraTransformed(event: GeometryEvent.CameraTransformed) {
@@ -141,13 +247,13 @@ class GeometryManager(
             }
 
             val currentCamera = drawingState.cameraTransform
+            val config = drawingState.drawingConfig
 
-            // 1. Apply zoom delta
+            // 1. Apply zoom delta with config-based limits
+            val minZoom = config.minZoom(event.screenWidthPx)
+            val maxZoom = config.maxZoom(event.screenWidthPx)
             val newZoom =
-                (currentCamera.zoom * event.zoomDelta).coerceIn(
-                    com.roomplanner.data.models.CameraTransform.MIN_ZOOM,
-                    com.roomplanner.data.models.CameraTransform.MAX_ZOOM,
-                )
+                (currentCamera.zoom * event.zoomDelta).coerceIn(minZoom, maxZoom)
 
             // 2. Adjust pan to zoom around zoomCenter (if provided)
             val (newPanX, newPanY) =
@@ -178,14 +284,60 @@ class GeometryManager(
                     )
                 }
 
+            // 3. Clamp pan to project boundaries
+            // The boundary is centered at (0, 0) in world space
+            val boundary = config.projectBoundaryCm
+            val halfBoundary = boundary / 2.0
+
+            // Calculate the viewport size in world coordinates
+            val viewportWidthWorld = event.screenWidthPx / newZoom
+            val viewportHeightWorld = event.screenHeightPx / newZoom
+
+            // Only clamp if viewport is smaller than boundary
+            // If viewport is larger than boundary, center the boundary in the viewport
+            val clampedPanX: Float
+            val clampedPanY: Float
+
+            if (viewportWidthWorld <= boundary) {
+                // Viewport fits within boundary - clamp to edges
+                // World coordinates visible: [(-panX/zoom) to (-panX/zoom + viewportWidth)]
+                // Constraint: -panX/zoom >= -halfBoundary AND -panX/zoom + viewportWidth <= halfBoundary
+                val minWorldX = -halfBoundary
+                val maxWorldX = halfBoundary - viewportWidthWorld
+
+                // Convert world constraints to pan constraints: pan = -world * zoom
+                val minPanX = -maxWorldX * newZoom
+                val maxPanX = -minWorldX * newZoom
+
+                clampedPanX = newPanX.toDouble().coerceIn(minPanX, maxPanX).toFloat()
+            } else {
+                // Viewport is larger than boundary - center the boundary
+                clampedPanX = (event.screenWidthPx / 2f)
+            }
+
+            if (viewportHeightWorld <= boundary) {
+                // Viewport fits within boundary - clamp to edges
+                val minWorldY = -halfBoundary
+                val maxWorldY = halfBoundary - viewportHeightWorld
+
+                // Convert world constraints to pan constraints: pan = -world * zoom
+                val minPanY = -maxWorldY * newZoom
+                val maxPanY = -minWorldY * newZoom
+
+                clampedPanY = newPanY.toDouble().coerceIn(minPanY, maxPanY).toFloat()
+            } else {
+                // Viewport is larger than boundary - center the boundary
+                clampedPanY = (event.screenHeightPx / 2f)
+            }
+
             val newCamera =
                 com.roomplanner.data.models.CameraTransform(
-                    panX = newPanX,
-                    panY = newPanY,
+                    panX = clampedPanX,
+                    panY = clampedPanY,
                     zoom = newZoom,
                 )
 
-            Logger.d { "  Camera updated: pan=($newPanX, $newPanY), zoom=$newZoom" }
+            Logger.d { "  Camera updated: pan=($clampedPanX, $clampedPanY), zoom=$newZoom" }
 
             state.updateDrawingState { it.withCamera(newCamera) }
         }
@@ -207,11 +359,16 @@ class GeometryManager(
     // Selection event handlers (Phase 1.4)
 
     private suspend fun handleVertexSelected(event: GeometryEvent.VertexSelected) {
-        Logger.i { "✓ Vertex selected: ${event.vertexId}" }
+        Logger.i { "✓ Vertex selected: ${event.vertexId} (now active for drawing)" }
 
         stateManager.updateState { state ->
             state.updateDrawingState { drawingState ->
-                drawingState.selectVertex(event.vertexId)
+                // Make this vertex active (blue) instead of selected (yellow)
+                // This allows continuing to draw from this vertex
+                drawingState.copy(
+                    activeVertexId = event.vertexId,
+                    selectedVertexId = null, // Clear yellow selection
+                )
             }
         }
     }
@@ -336,10 +493,13 @@ class GeometryManager(
                         when (constraint) {
                             is com.roomplanner.data.models.Constraint.Distance ->
                                 constraint.lineId != event.lineId
+
                             is com.roomplanner.data.models.Constraint.Angle ->
                                 constraint.lineId1 != event.lineId && constraint.lineId2 != event.lineId
+
                             is com.roomplanner.data.models.Constraint.Parallel ->
                                 constraint.lineId1 != event.lineId && constraint.lineId2 != event.lineId
+
                             is com.roomplanner.data.models.Constraint.Perpendicular ->
                                 constraint.lineId1 != event.lineId && constraint.lineId2 != event.lineId
                         }

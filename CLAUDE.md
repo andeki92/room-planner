@@ -1,6 +1,8 @@
-# Claude Instructions for OpenTile Mobile
+# Claude Instructions for RoomPlanner
 
-> **Project:** OpenTile Mobile - Professional Renovation Planning CAD Tool
+**IMPORTANT: Always use project-local `.claude/plans/` folder for plans, NEVER the global `~/.claude/` folder.**
+
+> **Project:** RoomPlanner - Professional Renovation Planning CAD Tool
 > **Stack:** Kotlin 2.2.0+ / Compose Multiplatform 1.8.0+ / iOS focus
 > **Architecture:** Reactive Event-Driven, Mode-based UI, BREP Topology
 > **Docs:** [spec.md](../spec.md) (source of truth) | [README.md](../README.md)

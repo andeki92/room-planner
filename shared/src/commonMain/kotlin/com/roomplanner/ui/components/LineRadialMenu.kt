@@ -40,8 +40,8 @@ import kotlin.math.sqrt
  * Radial context menu for line actions.
  * Appears when line is tapped in SELECT mode.
  *
- * Phase 1.5: Three actions (Set Dimension, Delete, Split placeholder)
- * Future: Additional actions (Edit properties, Convert to arc, etc.)
+ * Phase 1.5: Set Dimension, Delete
+ * Future: Additional actions (Split, Convert to arc, etc.)
  *
  * @param anchorPosition Screen position for menu center (typically line midpoint)
  * @param onSetDimension Callback when "Set Dimension" action is selected
@@ -63,7 +63,7 @@ fun LineRadialMenu(
     val strings = strings()
     var selectedItem by remember { mutableStateOf<LineAction?>(null) }
 
-    // Menu items with radial positions (3 items at ~120° intervals)
+    // Menu items with radial positions (2 items at ~180° apart)
     val items =
         listOf(
             LineMenuItem(
@@ -88,7 +88,7 @@ fun LineRadialMenu(
         )
 
     // Radial menu parameters
-    val radius = 80.dp // Distance from anchor center
+    val radius = 50.dp // Distance from anchor center (reduced from 80dp)
     val itemSize = 56.dp // Size of each menu item
     val density = LocalDensity.current
 

@@ -7,11 +7,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.KeyboardType
 import com.roomplanner.data.models.MeasurementUnits
 import com.roomplanner.localization.strings
@@ -49,6 +52,12 @@ fun DimensionInputDialog(
 ) {
     val strings = strings()
     var inputText by remember { mutableStateOf(initialValue?.toString() ?: "") }
+    val focusRequester = remember { FocusRequester() }
+
+    // Auto-focus the text field when dialog opens
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
 
     // Unit label for display
     val unitLabel =
@@ -71,7 +80,7 @@ fun DimensionInputDialog(
                         keyboardType = KeyboardType.Decimal,
                     ),
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
             )
         },
         confirmButton = {

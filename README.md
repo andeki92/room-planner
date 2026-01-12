@@ -1,4 +1,4 @@
-# OpenTile Mobile
+# RoomPlanner
 
 **Professional Renovation Planning CAD Tool for iOS & Android**
 
@@ -9,7 +9,7 @@
 
 > **🚧 Project Status:** In Development - Phase 0 (Foundation)
 
-OpenTile Mobile brings professional CAD-quality renovation planning to iOS and Android devices. Built with Kotlin Multiplatform and Compose Multiplatform, it enables contractors to create accurate floor plans, optimize tile layouts, generate material estimates, and produce professional quotes—all on-site from their phone or tablet.
+RoomPlanner brings professional CAD-quality renovation planning to iOS and Android devices. Built with Kotlin Multiplatform and Compose Multiplatform, it enables contractors to create accurate floor plans, optimize tile layouts, generate material estimates, and produce professional quotes—all on-site from their phone or tablet.
 
 ## ✨ Key Features
 
@@ -43,7 +43,7 @@ OpenTile Mobile brings professional CAD-quality renovation planning to iOS and A
 
 ## 🏛️ Architecture
 
-OpenTile Mobile uses **industry-proven architectural patterns** adapted from the desktop version:
+RoomPlanner uses **industry-proven architectural patterns** adapted from the desktop version:
 
 ### Event-Driven Architecture (Kotlin Flows)
 
@@ -116,7 +116,7 @@ data class AppState(
 ## 📁 Project Structure
 
 ```
-opentile-mobile/
+room-app/
 ├── shared/                      # Kotlin Multiplatform (100% shared)
 │   ├── commonMain/              # All business logic
 │   │   ├── domain/              # Geometry, topology, constraints
@@ -158,7 +158,7 @@ eval "$(mise activate zsh)"  # or bash
 **Step 2: Install project tools**
 
 ```bash
-cd opentile-mobile
+cd room-app
 
 # Install Java 17, Gradle 8.10.2, Node 22
 mise install

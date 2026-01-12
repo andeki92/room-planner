@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import com.roomplanner.localization.strings
 
@@ -14,6 +16,12 @@ fun CreateProjectDialog(
 ) {
     val strings = strings()
     var projectName by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+
+    // Auto-focus the text field when dialog opens
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -27,7 +35,7 @@ fun CreateProjectDialog(
                     onValueChange = { projectName = it },
                     label = { Text(strings.projectNameLabel) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                 )
             }
         },

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Architecture
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -38,16 +39,19 @@ import kotlin.math.sqrt
  * Radial context menu for vertex actions.
  * Appears when vertex is tapped in SELECT mode.
  *
- * Phase 1.5: Single action (Delete)
+ * Phase 1.5: Delete
+ * Phase 1.6.3: Set Angle (between connected lines)
  * Future: Multiple actions (Edit, Properties, Merge)
  *
  * @param anchorPosition Screen position of the vertex (center point)
+ * @param onSetAngle Callback when Set Angle action is selected (Phase 1.6.3)
  * @param onDelete Callback when Delete action is selected
  * @param onDismiss Callback to close the menu
  */
 @Composable
 fun VertexRadialMenu(
     anchorPosition: Offset,
+    onSetAngle: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -59,9 +63,15 @@ fun VertexRadialMenu(
     val strings = strings()
     var selectedItem by remember { mutableStateOf<VertexAction?>(null) }
 
-    // Menu items with radial positions
+    // Menu items with radial positions (2 items at 180° apart)
     val items =
         listOf(
+            VertexMenuItem(
+                action = VertexAction.SET_ANGLE,
+                icon = Icons.Default.Architecture, // Angle/ruler icon
+                label = "Set Angle", // Phase 1.6.3
+                angle = 0f, // Right of vertex
+            ),
             VertexMenuItem(
                 action = VertexAction.DELETE,
                 icon = Icons.Default.Delete,
@@ -71,7 +81,7 @@ fun VertexRadialMenu(
         )
 
     // Radial menu parameters
-    val radius = 80.dp // Distance from vertex center
+    val radius = 50.dp // Distance from vertex center (reduced from 80dp)
     val itemSize = 56.dp // Size of each menu item
     val density = LocalDensity.current
 
@@ -110,6 +120,10 @@ fun VertexRadialMenu(
                                     "✓ VertexMenu: Selected $tappedItem via tap"
                                 }
                                 when (tappedItem) {
+                                    VertexAction.SET_ANGLE -> {
+                                        onSetAngle()
+                                        onDismiss() // Dismiss AFTER action
+                                    }
                                     VertexAction.DELETE -> {
                                         onDelete()
                                         onDismiss() // Dismiss AFTER action
@@ -162,6 +176,10 @@ fun VertexRadialMenu(
                                     "✓ VertexMenu: Selected $action via drag"
                                 }
                                 when (action) {
+                                    VertexAction.SET_ANGLE -> {
+                                        onSetAngle()
+                                        onDismiss() // Dismiss AFTER action
+                                    }
                                     VertexAction.DELETE -> {
                                         onDelete()
                                         onDismiss() // Dismiss AFTER action
@@ -215,6 +233,7 @@ private data class VertexMenuItem(
  * Vertex action enum.
  */
 private enum class VertexAction {
+    SET_ANGLE, // Phase 1.6.3
     DELETE,
     // Future: EDIT, PROPERTIES, MERGE
 }

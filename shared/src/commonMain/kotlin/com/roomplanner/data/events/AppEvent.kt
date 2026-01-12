@@ -64,11 +64,15 @@ sealed interface GeometryEvent : AppEvent {
      * @param panDelta change in pan offset (screen pixels)
      * @param zoomDelta multiplicative zoom change (1.0 = no change)
      * @param zoomCenter screen coordinates of zoom center (for zoom-to-point)
+     * @param screenWidthPx screen width in pixels (for calculating zoom limits)
+     * @param screenHeightPx screen height in pixels (for calculating viewport boundaries)
      */
     data class CameraTransformed(
         val panDelta: androidx.compose.ui.geometry.Offset = androidx.compose.ui.geometry.Offset.Zero,
         val zoomDelta: Float = 1f,
         val zoomCenter: androidx.compose.ui.geometry.Offset? = null,
+        val screenWidthPx: Float = 1080f, // Default for compatibility
+        val screenHeightPx: Float = 1920f, // Default for compatibility
     ) : GeometryEvent
 
     /**

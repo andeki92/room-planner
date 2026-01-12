@@ -1,6 +1,6 @@
-# OpenTile Mobile - Complete Technical Specification
+# RoomPlanner - Complete Technical Specification
 
-> **Project:** OpenTile Mobile - Professional Renovation Planning CAD Tool for iOS/Android
+> **Project:** RoomPlanner - Professional Renovation Planning CAD Tool for iOS/Android
 > **Architecture:** Reactive Event-Driven Architecture using Kotlin Multiplatform + Compose Multiplatform
 > **Kotlin Version:** 2.2.0+
 > **Compose Multiplatform:** 1.8.0+ (iOS Stable)
@@ -34,7 +34,7 @@
 
 ### 1.1 Project Vision
 
-OpenTile Mobile brings **professional CAD renovation planning** to iOS and Android through Kotlin Multiplatform, solving real contractor pain points on-site:
+RoomPlanner Mobile brings **professional CAD renovation planning** to iOS and Android through Kotlin Multiplatform, solving real contractor pain points on-site:
 
 **Primary Value Proposition:**
 - **On-Site Drawing:** Measure and draw rooms directly at job site (tablet + phone support)
@@ -79,7 +79,7 @@ OpenTile Mobile brings **professional CAD renovation planning** to iOS and Andro
 
 ### 2.1 Core Architectural Patterns
 
-OpenTile Mobile translates the desktop's Bevy ECS architecture to Kotlin Multiplatform using industry-proven patterns:
+RoomPlanner translates the desktop's Bevy ECS architecture to Kotlin Multiplatform using industry-proven patterns:
 
 #### 1. **Event-Driven Architecture (Kotlin Flows)**
 
@@ -354,7 +354,7 @@ shared/
 ### 3.1 Mode Structure (Mobile-Optimized)
 
 ```
-OpenTile Mobile
+RoomPlanner
 │
 ├── Project Browser Mode
 │   └── Grid of recent projects, create new, cloud sync

@@ -8,6 +8,7 @@ import com.roomplanner.data.events.GeometryEvent
 import com.roomplanner.data.models.CameraTransform
 import com.roomplanner.data.models.ProjectDrawingState
 import com.roomplanner.data.models.SnapResult
+import com.roomplanner.data.models.SnapResultWithGuidelines
 import com.roomplanner.domain.geometry.Point2
 import com.roomplanner.domain.snapping.SmartSnapSystem
 import com.roomplanner.ui.utils.CoordinateConversion
@@ -35,7 +36,7 @@ class DrawToolGestureHandler : ToolGestureHandler {
         density: Density,
         eventBus: EventBus,
         onPreview: (Point2?) -> Unit,
-        onSnapHint: (Point2?) -> Unit,
+        onSnapHint: (SnapResultWithGuidelines?) -> Unit,
     ) {
         val worldPoint = CoordinateConversion.screenToWorld(screenPosition, camera)
 
@@ -44,9 +45,9 @@ class DrawToolGestureHandler : ToolGestureHandler {
             // Show preview at initial press position
             onPreview(worldPoint)
 
-            // Calculate snap hint
+            // Calculate snap with guidelines (supports multiple simultaneous snaps)
             val snapResult =
-                SmartSnapSystem.calculateSnap(
+                SmartSnapSystem.calculateSnapWithGuidelines(
                     cursorWorld = worldPoint,
                     cursorScreen = screenPosition,
                     drawingState = drawingState,
@@ -54,16 +55,8 @@ class DrawToolGestureHandler : ToolGestureHandler {
                     density = density,
                 )
 
-            // Update snap hint (only for "real" snaps, not grid/none)
-            onSnapHint(
-                when (snapResult) {
-                    is SnapResult.RightAngle -> snapResult.position
-                    is SnapResult.Vertex -> snapResult.position
-                    is SnapResult.Edge -> snapResult.position
-                    is SnapResult.Perpendicular -> snapResult.position
-                    else -> null
-                },
-            )
+            // Update snap hint (show guidelines if any)
+            onSnapHint(if (snapResult.guidelines.isNotEmpty()) snapResult else null)
         }
 
         Logger.d { "→ DRAW: Press at screen (${screenPosition.x}, ${screenPosition.y})" }
@@ -77,7 +70,7 @@ class DrawToolGestureHandler : ToolGestureHandler {
         density: Density,
         eventBus: EventBus,
         onPreview: (Point2?) -> Unit,
-        onSnapHint: (Point2?) -> Unit,
+        onSnapHint: (SnapResultWithGuidelines?) -> Unit,
     ) {
         // Only show preview/snap hints if there's an active vertex to draw from
         if (drawingState.activeVertexId == null) return
@@ -87,9 +80,9 @@ class DrawToolGestureHandler : ToolGestureHandler {
         // ALWAYS update preview to exact cursor position (continuous line)
         onPreview(worldPoint)
 
-        // Calculate snap hint during drag
+        // Calculate snap with guidelines (supports multiple simultaneous snaps)
         val snapResult =
-            SmartSnapSystem.calculateSnap(
+            SmartSnapSystem.calculateSnapWithGuidelines(
                 cursorWorld = worldPoint,
                 cursorScreen = screenPosition,
                 drawingState = drawingState,
@@ -97,16 +90,8 @@ class DrawToolGestureHandler : ToolGestureHandler {
                 density = density,
             )
 
-        // Show snap hint ONLY when snap would apply (dotted orange line)
-        onSnapHint(
-            when (snapResult) {
-                is SnapResult.RightAngle -> snapResult.position
-                is SnapResult.Vertex -> snapResult.position
-                is SnapResult.Edge -> snapResult.position
-                is SnapResult.Perpendicular -> snapResult.position
-                else -> null
-            },
-        )
+        // Show snap hint (guidelines) if any
+        onSnapHint(if (snapResult.guidelines.isNotEmpty()) snapResult else null)
     }
 
     override suspend fun handleRelease(
@@ -116,13 +101,13 @@ class DrawToolGestureHandler : ToolGestureHandler {
         density: Density,
         eventBus: EventBus,
         onPreview: (Point2?) -> Unit,
-        onSnapHint: (Point2?) -> Unit,
+        onSnapHint: (SnapResultWithGuidelines?) -> Unit,
     ) {
         val worldPoint = CoordinateConversion.screenToWorld(screenPosition, camera)
 
-        // Calculate final snap (works even without active vertex)
+        // Calculate final snap with guidelines
         val snapResult =
-            SmartSnapSystem.calculateSnap(
+            SmartSnapSystem.calculateSnapWithGuidelines(
                 cursorWorld = worldPoint,
                 cursorScreen = screenPosition,
                 drawingState = drawingState,
@@ -130,22 +115,15 @@ class DrawToolGestureHandler : ToolGestureHandler {
                 density = density,
             )
 
-        // Use snap result if available, otherwise use exact cursor position
+        // Use snap position (which may be intersection of multiple guidelines)
         val finalPosition =
-            when (snapResult) {
-                is SnapResult.RightAngle -> snapResult.position
-                is SnapResult.Vertex -> snapResult.position
-                is SnapResult.Edge -> snapResult.position
-                is SnapResult.Perpendicular -> snapResult.position
-                else -> worldPoint // Exact position (no snap or grid snap)
+            if (snapResult.guidelines.isNotEmpty()) {
+                snapResult.snapPosition
+            } else {
+                worldPoint
             }
 
-        val snapType =
-            if (snapResult !is SnapResult.None && snapResult !is SnapResult.Grid) {
-                "snapped"
-            } else {
-                "exact"
-            }
+        val snapType = if (snapResult.guidelines.isNotEmpty()) "snapped" else "exact"
 
         val isFirstVertex = drawingState.activeVertexId == null
         Logger.i {
@@ -156,12 +134,18 @@ class DrawToolGestureHandler : ToolGestureHandler {
             }
         }
 
+        // Check if snapped to vertex for closing shapes
+        val snappedToVertexId =
+            snapResult.guidelines
+                .filterIsInstance<SnapResult.Vertex>()
+                .firstOrNull()
+                ?.vertexId
+
         // Emit event (GeometryManager will handle state update)
-        // This works for both first vertex and subsequent vertices
         eventBus.emit(
             GeometryEvent.PointPlaced(
                 position = finalPosition,
-                snappedTo = if (snapResult is SnapResult.Vertex) snapResult.vertexId else null,
+                snappedTo = snappedToVertexId,
             ),
         )
 
@@ -176,13 +160,15 @@ class DrawToolGestureHandler : ToolGestureHandler {
         camera: CameraTransform,
         density: Density,
         eventBus: EventBus,
+        onPreview: (Point2?) -> Unit,
+        onSnapHint: (SnapResultWithGuidelines?) -> Unit,
     ) {
         // Tap places vertex immediately (same logic as handleRelease)
         val worldPoint = CoordinateConversion.screenToWorld(screenPosition, camera)
 
-        // Calculate final snap
+        // Calculate final snap with guidelines
         val snapResult =
-            SmartSnapSystem.calculateSnap(
+            SmartSnapSystem.calculateSnapWithGuidelines(
                 cursorWorld = worldPoint,
                 cursorScreen = screenPosition,
                 drawingState = drawingState,
@@ -190,22 +176,15 @@ class DrawToolGestureHandler : ToolGestureHandler {
                 density = density,
             )
 
-        // Use snap result if available, otherwise use exact cursor position
+        // Use snap position (which may be intersection of multiple guidelines)
         val finalPosition =
-            when (snapResult) {
-                is SnapResult.RightAngle -> snapResult.position
-                is SnapResult.Vertex -> snapResult.position
-                is SnapResult.Edge -> snapResult.position
-                is SnapResult.Perpendicular -> snapResult.position
-                else -> worldPoint
+            if (snapResult.guidelines.isNotEmpty()) {
+                snapResult.snapPosition
+            } else {
+                worldPoint
             }
 
-        val snapType =
-            if (snapResult !is SnapResult.None && snapResult !is SnapResult.Grid) {
-                "snapped"
-            } else {
-                "exact"
-            }
+        val snapType = if (snapResult.guidelines.isNotEmpty()) "snapped" else "exact"
 
         val isFirstVertex = drawingState.activeVertexId == null
         Logger.i {
@@ -216,12 +195,23 @@ class DrawToolGestureHandler : ToolGestureHandler {
             }
         }
 
+        // Check if snapped to vertex for closing shapes
+        val snappedToVertexId =
+            snapResult.guidelines
+                .filterIsInstance<SnapResult.Vertex>()
+                .firstOrNull()
+                ?.vertexId
+
         // Emit event
         eventBus.emit(
             GeometryEvent.PointPlaced(
                 position = finalPosition,
-                snappedTo = if (snapResult is SnapResult.Vertex) snapResult.vertexId else null,
+                snappedTo = snappedToVertexId,
             ),
         )
+
+        // Clear preview states (matches handleRelease pattern)
+        onPreview(null)
+        onSnapHint(null)
     }
 }

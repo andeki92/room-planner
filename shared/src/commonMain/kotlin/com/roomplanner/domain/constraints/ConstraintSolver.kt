@@ -1,3 +1,5 @@
+@file:Suppress("DuplicatedCode")
+
 package com.roomplanner.domain.constraints
 
 import co.touchlab.kermit.Logger
@@ -10,6 +12,7 @@ import com.roomplanner.data.models.ProjectDrawingState
 import com.roomplanner.domain.drawing.Line
 import com.roomplanner.domain.drawing.Vertex
 import com.roomplanner.domain.geometry.Point2
+import com.roomplanner.domain.geometry.RectangleDetector
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -240,11 +243,17 @@ class ConstraintSolver(
     /**
      * Main solver loop: iteratively apply constraints until convergence.
      *
+     * Phase 1.6: Priority-based solving ensures 90° angles are never broken.
+     *
      * Algorithm:
-     * 1. For each constraint, calculate error and apply correction
-     * 2. Track maximum error across all constraints
-     * 3. If max error < tolerance, converged → exit
-     * 4. If max iterations reached, give up → log warning
+     * 1. Sort constraints by priority (highest first)
+     *    - Perpendicular constraints (priority 100) solved first
+     *    - Distance constraints (priority 50) solved second
+     *    - Other angles (priority 10) solved last
+     * 2. For each constraint, calculate error and apply correction
+     * 3. Track maximum error across all constraints
+     * 4. If max error < tolerance, converged → exit
+     * 5. If max iterations reached, give up → log warning
      *
      * Performance:
      * - Typical floor plans: 5-10 iterations, <100ms
@@ -253,24 +262,30 @@ class ConstraintSolver(
     private suspend fun solveConstraints() {
         val state = stateManager.state.value
         val drawingState = state.projectDrawingState ?: return
-        val constraints = drawingState.constraints.values.filter { it.enabled }
+        val constraints =
+            drawingState.constraints.values
+                .filter { it.enabled }
+                .sortedByDescending { it.priority } // ✅ NEW: Priority-based sorting
 
         if (constraints.isEmpty()) {
             return // No constraints to solve
         }
 
-        Logger.d { "→ Solving ${constraints.size} constraints..." }
+        Logger.d { "→ Solving ${constraints.size} constraints (priority-sorted)..." }
 
         repeat(MAX_ITERATIONS) { iteration ->
             var maxError = 0.0
 
-            // Apply each constraint in sequence (Gauss-Seidel)
+            // Apply each constraint in priority order (Gauss-Seidel)
             constraints.forEach { constraint ->
                 val error = applyConstraint(constraint)
                 maxError = max(maxError, abs(error))
             }
 
-            Logger.d { "  Iteration $iteration: max error = $maxError" }
+            // Only log every 10 iterations or when error is high
+            if (iteration % 10 == 0 || maxError > 10.0) {
+                Logger.d { "  Iteration $iteration: max error = $maxError" }
+            }
 
             // Check convergence
             if (maxError < TOLERANCE) {
@@ -336,6 +351,9 @@ class ConstraintSolver(
     /**
      * Stage 1: Try to satisfy distance constraint while preserving angles.
      * Returns true if successful, false if angle preservation not possible.
+     *
+     * Phase 1.6.1: Smart propagation for rectangles.
+     * If line is part of rectangle, propagate dimension to opposite wall.
      */
     private suspend fun tryPreservingAngles(
         line: Line,
@@ -345,6 +363,13 @@ class ConstraintSolver(
         error: Double,
         drawingState: ProjectDrawingState
     ): Boolean {
+        // Phase 1.6.1: Check if line is part of rectangle
+        val rectangle = RectangleDetector.detectRectangle(line, drawingState)
+        if (rectangle != null) {
+            Logger.d { "→ Detected rectangle, propagating to opposite wall" }
+            return propagateToOppositeWall(line, targetDistance, rectangle, drawingState)
+        }
+
         // Check if vertices have other connected lines
         val v1ConnectedLines = drawingState.getLinesConnectedToVertex(v1.id)
         val v2ConnectedLines = drawingState.getLinesConnectedToVertex(v2.id)
@@ -423,20 +448,88 @@ class ConstraintSolver(
     }
 
     /**
-     * Stage 2: Allow rotation (existing Gauss-Seidel relaxation).
-     * This is the fallback when angle preservation is not applicable.
+     * Phase 1.6.1: Propagate dimension change to opposite wall in rectangle.
+     *
+     * When adjusting one wall's dimension in a rectangle:
+     * 1. Adjust the constrained wall to target distance
+     * 2. Find opposite wall
+     * 3. Adjust opposite wall to same distance
+     * 4. Keep all 90° angles intact
+     *
+     * @param line The wall being constrained
+     * @param targetDistance Target distance for the wall
+     * @param rectangle Detected rectangle structure
+     * @param drawingState Current drawing state
+     * @return True if propagation successful
+     */
+    private suspend fun propagateToOppositeWall(
+        line: Line,
+        targetDistance: Double,
+        rectangle: RectangleDetector.Rectangle,
+        drawingState: ProjectDrawingState
+    ): Boolean {
+        val oppositeLine = rectangle.oppositeLine(line) ?: return false
+
+        // Get vertices for both lines
+        val v1 = drawingState.vertices[line.startVertexId] ?: return false
+        val v2 = drawingState.vertices[line.endVertexId] ?: return false
+        val oppV1 = drawingState.vertices[oppositeLine.startVertexId] ?: return false
+        val oppV2 = drawingState.vertices[oppositeLine.endVertexId] ?: return false
+
+        // Calculate direction vectors for both walls
+        val direction = (v2.position - v1.position).normalize()
+        val oppDirection = (oppV2.position - oppV1.position).normalize()
+
+        // Adjust primary wall (the one being constrained)
+        val newV2 =
+            v2.copy(
+                position = v1.position + direction * targetDistance,
+            )
+
+        // Adjust opposite wall to same distance
+        val newOppV2 =
+            oppV2.copy(
+                position = oppV1.position + oppDirection * targetDistance,
+            )
+
+        // Update both vertices atomically
+        stateManager.updateState { state ->
+            state.updateDrawingState { drawingState ->
+                drawingState.copy(
+                    vertices =
+                        drawingState.vertices +
+                            (v2.id to newV2) +
+                            (oppV2.id to newOppV2),
+                )
+            }
+        }
+
+        Logger.i { "✓ Propagated dimension to opposite wall (rectangle preserved)" }
+        return true
+    }
+
+    /**
+     * Stage 2: Position-Based distance constraint solver (fallback when angle preservation not applicable).
+     *
+     * Based on Position-Based Dynamics (PBD) distance constraint algorithm.
+     * Source: https://carmencincotti.com/2022-08-22/the-distance-constraint-of-xpbd/
      *
      * Algorithm:
-     * 1. Calculate current line length
-     * 2. Calculate error = current - target
-     * 3. Calculate unit direction vector
-     * 4. Move both endpoints toward/away to correct error (damped by relaxation factor)
-     * 5. Respect fixed vertices (don't move them)
+     * 1. Calculate constraint function: C = |currentLength| - targetLength
+     * 2. Calculate normalized direction: n = (v2 - v1) / |v2 - v1|
+     * 3. Calculate position corrections weighted by inverse mass
+     * 4. Apply corrections with damping
+     *
+     * Position correction formulas:
+     * - Δx1 = -(w1/(w1 + w2)) * C * n  (move v1 towards/away from v2)
+     * - Δx2 = +(w2/(w1 + w2)) * C * n  (move v2 away/towards v1)
+     *
+     * where w = inverse mass (fixed vertices have w=0, free vertices have w=1)
      *
      * Edge cases:
      * - Degenerate line (length ≈ 0): Return error without correction
      * - Both vertices fixed: Cannot satisfy constraint (over-constrained)
-     * - One vertex fixed: Move only the unfixed vertex
+     * - One vertex fixed: Other vertex receives 100% of correction
      */
     private suspend fun applyDistanceConstraintWithRotation(
         line: Line,
@@ -444,103 +537,77 @@ class ConstraintSolver(
         v2: Vertex,
         error: Double
     ): Double {
-        // Direction vector (v1 → v2)
+        // Calculate current distance
         val dx = v2.position.x - v1.position.x
         val dy = v2.position.y - v1.position.y
-        val length = sqrt(dx * dx + dy * dy)
+        val currentLength = sqrt(dx * dx + dy * dy)
 
         // Degenerate line (both vertices at same position)
-        if (length < Point2.EPSILON) {
-            return error // Can't fix degenerate line
+        if (currentLength < Point2.EPSILON) {
+            Logger.w { "⚠ Degenerate line ${line.id}: vertices at same position" }
+            return error
         }
 
-        // Unit direction vector
-        val ux = dx / length
-        val uy = dy / length
+        // Calculate normalized direction vector (gradient of constraint)
+        val nx = dx / currentLength
+        val ny = dy / currentLength
 
-        // Correction magnitude (damped to prevent oscillation)
-        val correction = error * RELAXATION_FACTOR
+        // Constraint function: C = currentLength - targetLength = error
+        // (Positive = too long, negative = too short)
+        val c = error
 
-        // Move vertices based on which are fixed
-        when {
-            !v1.fixed && !v2.fixed -> {
-                // Both vertices movable: split correction equally
-                val halfCorrection = correction / 2.0
+        // Calculate inverse masses (w = 1/m, fixed vertices have w = 0)
+        val w1 = if (v1.fixed) 0.0 else 1.0
+        val w2 = if (v2.fixed) 0.0 else 1.0
+        val wSum = w1 + w2
 
-                val newV1 =
-                    v1.copy(
-                        position =
-                            Point2(
-                                v1.position.x + ux * halfCorrection,
-                                v1.position.y + uy * halfCorrection,
-                            ),
-                    )
+        // Both fixed = over-constrained
+        if (wSum < Point2.EPSILON) {
+            Logger.w { "⚠ Over-constrained: line ${line.id} has both vertices fixed" }
+            return error
+        }
 
-                val newV2 =
-                    v2.copy(
-                        position =
-                            Point2(
-                                v2.position.x - ux * halfCorrection,
-                                v2.position.y - uy * halfCorrection,
-                            ),
-                    )
+        // Calculate position corrections (PBD formula with damping)
+        // Δx1 = -(w1/wSum) * C * n
+        // Δx2 = +(w2/wSum) * C * n
+        val correction1 = -(w1 / wSum) * c * RELAXATION_FACTOR
+        val correction2 = (w2 / wSum) * c * RELAXATION_FACTOR
 
-                stateManager.updateState { state ->
-                    state.updateDrawingState { drawingState ->
-                        drawingState.copy(
-                            vertices =
-                                drawingState.vertices +
-                                    (v1.id to newV1) +
-                                    (v2.id to newV2),
-                        )
-                    }
+        val delta1x = correction1 * nx
+        val delta1y = correction1 * ny
+        val delta2x = correction2 * nx
+        val delta2y = correction2 * ny
+
+        // Apply corrections
+        val updates = mutableMapOf<String, Vertex>()
+
+        if (!v1.fixed && abs(correction1) > Point2.EPSILON) {
+            updates[v1.id] =
+                v1.copy(
+                    position =
+                        Point2(
+                            v1.position.x + delta1x,
+                            v1.position.y + delta1y,
+                        ),
+                )
+        }
+
+        if (!v2.fixed && abs(correction2) > Point2.EPSILON) {
+            updates[v2.id] =
+                v2.copy(
+                    position =
+                        Point2(
+                            v2.position.x + delta2x,
+                            v2.position.y + delta2y,
+                        ),
+                )
+        }
+
+        if (updates.isNotEmpty()) {
+            stateManager.updateState { state ->
+                state.updateDrawingState { drawingState ->
+                    drawingState.copy(vertices = drawingState.vertices + updates)
                 }
-            }
-
-            !v1.fixed -> {
-                // Only v1 movable: apply full correction to v1
-                val newV1 =
-                    v1.copy(
-                        position =
-                            Point2(
-                                v1.position.x + ux * correction,
-                                v1.position.y + uy * correction,
-                            ),
-                    )
-
-                stateManager.updateState { state ->
-                    state.updateDrawingState { drawingState ->
-                        drawingState.copy(
-                            vertices = drawingState.vertices + (v1.id to newV1),
-                        )
-                    }
-                }
-            }
-
-            !v2.fixed -> {
-                // Only v2 movable: apply full correction to v2
-                val newV2 =
-                    v2.copy(
-                        position =
-                            Point2(
-                                v2.position.x - ux * correction,
-                                v2.position.y - uy * correction,
-                            ),
-                    )
-
-                stateManager.updateState { state ->
-                    state.updateDrawingState { drawingState ->
-                        drawingState.copy(
-                            vertices = drawingState.vertices + (v2.id to newV2),
-                        )
-                    }
-                }
-            }
-
-            else -> {
-                // Both vertices fixed: cannot satisfy constraint (over-constrained)
-                // This is a conflict - log it but don't crash
-                Logger.w { "⚠ Over-constrained: line ${line.id} has both vertices fixed" }
             }
         }
 
@@ -550,9 +617,8 @@ class ConstraintSolver(
     /**
      * Apply angle constraint: maintain specific angle between two lines.
      *
-     * Phase 3: Angle constraints
-     * Currently a simplified implementation - rotates one line to match target angle.
-     * Future: More sophisticated approach considering both lines' constraints.
+     * Phase 1.6: Rotates one line to match target angle.
+     * Strategy: Rotate the line with fewer connections (less impact on overall geometry).
      *
      * @param constraint Angle constraint to apply
      * @return Error magnitude (for convergence check)
@@ -563,6 +629,19 @@ class ConstraintSolver(
 
         val line1 = drawingState.lines.find { it.id == constraint.lineId1 } ?: return 0.0
         val line2 = drawingState.lines.find { it.id == constraint.lineId2 } ?: return 0.0
+
+        // Find shared vertex (lines must share a vertex to have a meaningful angle)
+        val sharedVertexId =
+            when {
+                line1.startVertexId == line2.startVertexId || line1.startVertexId == line2.endVertexId ->
+                    line1.startVertexId
+
+                line1.endVertexId == line2.startVertexId || line1.endVertexId == line2.endVertexId -> line1.endVertexId
+                else -> {
+                    Logger.w { "⚠ Angle constraint on non-adjacent lines" }
+                    return 0.0
+                }
+            }
 
         val geom1 = line1.getGeometry(drawingState.vertices)
         val geom2 = line2.getGeometry(drawingState.vertices)
@@ -581,10 +660,77 @@ class ConstraintSolver(
             "→ Applying angle constraint: current=${currentAngle * 180 / PI}°, target=${constraint.angle}°, error=${error * 180 / PI}°"
         }
 
-        // Simplified: For now, just log and return error
-        // Full implementation would rotate vertices to adjust angle
-        // This requires more complex logic to determine which line to rotate
+        // Decide which line to rotate: prefer rotating the one with fewer connections
+        val line1Connections =
+            drawingState.getLinesConnectedToVertex(line1.startVertexId).size +
+                drawingState.getLinesConnectedToVertex(line1.endVertexId).size
+        val line2Connections =
+            drawingState.getLinesConnectedToVertex(line2.startVertexId).size +
+                drawingState.getLinesConnectedToVertex(line2.endVertexId).size
+
+        val (lineToRotate, targetAngle) =
+            if (line1Connections <= line2Connections) {
+                // Rotate line1 to match angle relative to line2
+                line1 to (angle2 - targetAngleRad)
+            } else {
+                // Rotate line2 to match angle relative to line1
+                line2 to (angle1 + targetAngleRad)
+            }
+
+        // Perform rotation around shared vertex
+        rotateLineAroundVertex(lineToRotate, sharedVertexId, targetAngle, drawingState)
+
         return error
+    }
+
+    /**
+     * Rotate a line around a pivot vertex to a target angle.
+     * Moves the non-pivot vertex to achieve the target angle.
+     */
+    private suspend fun rotateLineAroundVertex(
+        line: Line,
+        pivotVertexId: String,
+        targetAngle: Double,
+        drawingState: ProjectDrawingState
+    ) {
+        val pivotVertex = drawingState.vertices[pivotVertexId] ?: return
+        val otherVertexId = if (line.startVertexId == pivotVertexId) line.endVertexId else line.startVertexId
+        val otherVertex = drawingState.vertices[otherVertexId] ?: return
+
+        // Don't rotate if other vertex is fixed
+        if (otherVertex.fixed) {
+            Logger.d { "→ Cannot rotate: other vertex is fixed" }
+            return
+        }
+
+        // Calculate current distance (preserve line length during rotation)
+        val currentDistance = pivotVertex.position.distanceTo(otherVertex.position)
+
+        // Calculate new position based on target angle
+        val newX = pivotVertex.position.x + currentDistance * kotlin.math.cos(targetAngle)
+        val newY = pivotVertex.position.y + currentDistance * kotlin.math.sin(targetAngle)
+
+        val newOtherVertex =
+            otherVertex.copy(
+                position = Point2(newX, newY),
+            )
+
+        // Apply rotation with damping to prevent oscillation
+        val dampedPosition =
+            Point2(
+                x = otherVertex.position.x + (newX - otherVertex.position.x) * RELAXATION_FACTOR,
+                y = otherVertex.position.y + (newY - otherVertex.position.y) * RELAXATION_FACTOR,
+            )
+
+        stateManager.updateState { state ->
+            state.updateDrawingState { drawingState ->
+                drawingState.copy(
+                    vertices = drawingState.vertices + (otherVertexId to otherVertex.copy(position = dampedPosition)),
+                )
+            }
+        }
+
+        Logger.d { "→ Rotated line ${line.id} around vertex $pivotVertexId" }
     }
 
     /**
@@ -606,18 +752,81 @@ class ConstraintSolver(
 
     /**
      * Apply perpendicular constraint (angle = 90°).
+     *
+     * Phase 1.6: Improved implementation that actually rotates lines to maintain 90°.
+     *
+     * Strategy:
+     * 1. Calculate current angle between lines
+     * 2. If not 90° (within tolerance), rotate one line to make it 90°
+     * 3. Prefer rotating the line with fewer connections (less impact)
+     * 4. Respect fixed vertices (don't move them)
      */
     private suspend fun applyPerpendicularConstraint(constraint: Constraint.Perpendicular): Double {
-        val angleConstraint =
-            Constraint.Angle(
-                id = constraint.id,
-                lineId1 = constraint.lineId1,
-                lineId2 = constraint.lineId2,
-                angle = 90.0,
-                enabled = constraint.enabled,
-                userSet = false,
-            )
-        return applyAngleConstraint(angleConstraint)
+        val state = stateManager.state.value
+        val drawingState = state.projectDrawingState ?: return 0.0
+
+        val line1 = drawingState.lines.find { it.id == constraint.lineId1 } ?: return 0.0
+        val line2 = drawingState.lines.find { it.id == constraint.lineId2 } ?: return 0.0
+
+        // Find shared vertex (lines must share a vertex to be perpendicular)
+        val sharedVertexId =
+            when {
+                line1.startVertexId == line2.startVertexId || line1.startVertexId == line2.endVertexId ->
+                    line1.startVertexId
+
+                line1.endVertexId == line2.startVertexId || line1.endVertexId == line2.endVertexId ->
+                    line1.endVertexId
+
+                else -> {
+                    Logger.w { "⚠ Perpendicular constraint on non-adjacent lines" }
+                    return 0.0
+                }
+            }
+
+        val geom1 = line1.getGeometry(drawingState.vertices)
+        val geom2 = line2.getGeometry(drawingState.vertices)
+
+        // Calculate angles (in radians)
+        val angle1 = atan2(geom1.end.y - geom1.start.y, geom1.end.x - geom1.start.x)
+        val angle2 = atan2(geom2.end.y - geom2.start.y, geom2.end.x - geom2.start.x)
+
+        // Calculate relative angle (normalize to -π to π)
+        var relativeAngle = angle2 - angle1
+        while (relativeAngle > PI) relativeAngle -= 2 * PI
+        while (relativeAngle < -PI) relativeAngle += 2 * PI
+
+        // Calculate error from 90° (π/2 radians)
+        val targetAngle = PI / 2.0
+        val angleDegrees = abs(relativeAngle) * 180.0 / PI
+        val error = abs(abs(relativeAngle) - targetAngle)
+
+        if (error < (TOLERANCE * PI / 180.0)) return error
+
+        Logger.d {
+            "→ Applying perpendicular constraint: current=$angleDegrees°, target=90°, error=${error * 180 / PI}°"
+        }
+
+        // Decide which line to rotate: prefer rotating the one with fewer connections
+        val line1Connections =
+            drawingState.getLinesConnectedToVertex(line1.startVertexId).size +
+                drawingState.getLinesConnectedToVertex(line1.endVertexId).size
+        val line2Connections =
+            drawingState.getLinesConnectedToVertex(line2.startVertexId).size +
+                drawingState.getLinesConnectedToVertex(line2.endVertexId).size
+
+        val (lineToRotate, targetAngleAbs) =
+            if (line1Connections <= line2Connections) {
+                // Rotate line1 perpendicular to line2
+                line1 to (angle2 + PI / 2.0)
+            } else {
+                // Rotate line2 perpendicular to line1
+                line2 to (angle1 + PI / 2.0)
+            }
+
+        // Perform rotation around shared vertex
+        rotateLineAroundVertex(lineToRotate, sharedVertexId, targetAngleAbs, drawingState)
+
+        return error
     }
 
     /**

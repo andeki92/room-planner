@@ -5,7 +5,10 @@ import androidx.compose.ui.unit.Density
 import com.roomplanner.data.events.EventBus
 import com.roomplanner.data.models.CameraTransform
 import com.roomplanner.data.models.ProjectDrawingState
+import com.roomplanner.data.models.SnapResultWithGuidelines
 import com.roomplanner.domain.geometry.Point2
+
+// Note: SnapResult import removed - using SnapResultWithGuidelines for multiple guidelines support
 
 /**
  * Interface for tool-specific gesture handling.
@@ -52,7 +55,7 @@ interface ToolGestureHandler {
         density: Density,
         eventBus: EventBus,
         onPreview: (Point2?) -> Unit,
-        onSnapHint: (Point2?) -> Unit,
+        onSnapHint: (SnapResultWithGuidelines?) -> Unit,
     )
 
     /**
@@ -75,7 +78,7 @@ interface ToolGestureHandler {
         density: Density,
         eventBus: EventBus,
         onPreview: (Point2?) -> Unit,
-        onSnapHint: (Point2?) -> Unit,
+        onSnapHint: (SnapResultWithGuidelines?) -> Unit,
     )
 
     /**
@@ -96,7 +99,7 @@ interface ToolGestureHandler {
         density: Density,
         eventBus: EventBus,
         onPreview: (Point2?) -> Unit,
-        onSnapHint: (Point2?) -> Unit,
+        onSnapHint: (SnapResultWithGuidelines?) -> Unit,
     )
 
     /**
@@ -105,9 +108,11 @@ interface ToolGestureHandler {
      * Called when user taps screen (< 200ms, < 10px movement).
      * Use this to:
      * - Show radial menu (SELECT mode)
-     * - Quick-place vertex without drag (future enhancement)
+     * - Quick-place vertex without drag (DRAW mode)
      *
      * @param screenPosition Tap position
+     * @param onPreview Callback to update preview state (local UI state)
+     * @param onSnapHint Callback to update snap hint state (local UI state)
      */
     suspend fun handleTap(
         screenPosition: Offset,
@@ -115,6 +120,8 @@ interface ToolGestureHandler {
         camera: CameraTransform,
         density: Density,
         eventBus: EventBus,
+        onPreview: (Point2?) -> Unit,
+        onSnapHint: (SnapResultWithGuidelines?) -> Unit,
     )
 
     /**
