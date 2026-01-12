@@ -39,14 +39,11 @@ fun LineRadialMenu(
                 id = "set_dimension",
                 icon = Icons.Default.Straighten,
                 contentDescription = strings.setDimension,
-                angle = 135f, // Upper-left
-                isDestructive = false,
             ),
             RadialMenuItem(
                 id = "delete",
                 icon = Icons.Default.Delete,
                 contentDescription = strings.deleteButton,
-                angle = 45f, // Upper-right
                 isDestructive = true,
             ),
         )

@@ -45,32 +45,71 @@ import kotlin.math.sqrt
  * @param id Unique identifier for the action
  * @param icon Icon to display
  * @param contentDescription Accessibility description
- * @param angle Position in degrees (0 = right, 90 = up in Compose coords, 180 = left, 270 = down)
  * @param isDestructive Whether this is a destructive action (shown in error color)
  */
 data class RadialMenuItem(
     val id: String,
     val icon: ImageVector,
     val contentDescription: String,
-    val angle: Float,
     val isDestructive: Boolean = false,
 )
 
 /**
  * Radial menu configuration.
+ *
+ * Default values optimized for touch interaction:
+ * - 70dp radius provides comfortable spacing
+ * - 56dp item size meets iOS 44pt minimum touch target
+ * - 28dp icons are clearly visible
+ *
+ * @param radius Distance from anchor to menu items
+ * @param itemSize Diameter of each menu item button
+ * @param iconSize Size of the icon inside each button
+ * @param startAngle Starting angle in degrees (first item position). 90 = top, 0 = right
+ * @param backdropColor Color of the semi-transparent backdrop
+ * @param useBlurBackdrop Whether to apply blur effect to backdrop
+ * @param blurRadius Blur amount when useBlurBackdrop is true
  */
 data class RadialMenuConfig(
-    val radius: Dp = 60.dp,
-    val itemSize: Dp = 52.dp,
+    val radius: Dp = 70.dp,
+    val itemSize: Dp = 56.dp,
+    val iconSize: Dp = 28.dp,
+    val startAngle: Float = 90f,
     val backdropColor: Color = Color.Black.copy(alpha = 0.4f),
     val useBlurBackdrop: Boolean = true,
-    val blurRadius: Dp = 20.dp,
+    val blurRadius: Dp = 16.dp,
 )
+
+/**
+ * Calculate evenly distributed angles for menu items.
+ *
+ * Items are distributed evenly around the circle starting from startAngle.
+ * - 2 items: 180° apart (e.g., top and bottom)
+ * - 3 items: 120° apart
+ * - 4 items: 90° apart
+ *
+ * @param itemCount Number of items to distribute
+ * @param startAngle Starting angle in degrees (90 = top, 0 = right)
+ * @return List of angles in degrees for each item position
+ */
+private fun calculateItemAngles(
+    itemCount: Int,
+    startAngle: Float
+): List<Float> {
+    if (itemCount == 0) return emptyList()
+    if (itemCount == 1) return listOf(startAngle)
+
+    val angleStep = 360f / itemCount
+    return (0 until itemCount).map { index ->
+        (startAngle + index * angleStep) % 360f
+    }
+}
 
 /**
  * Shared radial context menu component.
  *
  * Displays circular menu items arranged radially around an anchor point.
+ * Items are automatically distributed evenly around the circle.
  * Supports both tap and drag-to-select interactions.
  *
  * @param anchorPosition Screen position for menu center
@@ -94,6 +133,12 @@ fun RadialMenu(
     var selectedItemId by remember { mutableStateOf<String?>(null) }
     var isVisible by remember { mutableStateOf(false) }
     val density = LocalDensity.current
+
+    // Calculate angles for each item (evenly distributed)
+    val itemAngles =
+        remember(items.size, config.startAngle) {
+            calculateItemAngles(items.size, config.startAngle)
+        }
 
     // Trigger entrance animation
     LaunchedEffect(Unit) {
@@ -125,7 +170,7 @@ fun RadialMenu(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .pointerInput(Unit) {
+                    .pointerInput(items.size, config.startAngle) {
                         // Handle tap (for quick selection)
                         detectTapGestures(
                             onTap = { tapPosition ->
@@ -135,18 +180,19 @@ fun RadialMenu(
                                 Logger.d { "RadialMenu: Tap at $tapPosition" }
 
                                 // Find which item was tapped
-                                val tappedItem =
-                                    items.find { item ->
+                                val tappedIndex =
+                                    items.indices.find { index ->
                                         val itemPosition =
                                             calculateRadialPosition(
                                                 anchor = anchorPosition,
                                                 radius = radiusPx,
-                                                angle = item.angle,
+                                                angle = itemAngles[index],
                                             )
                                         distance(tapPosition, itemPosition) < itemSizePx / 2
                                     }
 
-                                if (tappedItem != null) {
+                                if (tappedIndex != null) {
+                                    val tappedItem = items[tappedIndex]
                                     Logger.i { "✓ RadialMenu: Selected ${tappedItem.id} via tap" }
                                     onItemSelected(tappedItem.id)
                                     onDismiss()
@@ -156,7 +202,7 @@ fun RadialMenu(
                                 }
                             },
                         )
-                    }.pointerInput(Unit) {
+                    }.pointerInput(items.size, config.startAngle) {
                         // Handle drag (for drag-to-select)
                         detectDragGestures(
                             onDragStart = { startPosition ->
@@ -168,17 +214,17 @@ fun RadialMenu(
                                 val itemSizePx = with(density) { config.itemSize.toPx() }
 
                                 val previousSelection = selectedItemId
-                                selectedItemId =
-                                    items
-                                        .find { item ->
-                                            val itemPosition =
-                                                calculateRadialPosition(
-                                                    anchor = anchorPosition,
-                                                    radius = radiusPx,
-                                                    angle = item.angle,
-                                                )
-                                            distance(dragPosition, itemPosition) < itemSizePx / 2
-                                        }?.id
+                                val hoveredIndex =
+                                    items.indices.find { index ->
+                                        val itemPosition =
+                                            calculateRadialPosition(
+                                                anchor = anchorPosition,
+                                                radius = radiusPx,
+                                                angle = itemAngles[index],
+                                            )
+                                        distance(dragPosition, itemPosition) < itemSizePx / 2
+                                    }
+                                selectedItemId = hoveredIndex?.let { items[it].id }
 
                                 if (selectedItemId != previousSelection) {
                                     Logger.d { "RadialMenu: Drag selection changed to $selectedItemId" }
@@ -202,11 +248,12 @@ fun RadialMenu(
 
         // Layer 3: Menu items (rendered above backdrop, NOT blurred)
         items.forEachIndexed { index, item ->
+            val angle = itemAngles[index]
             val itemPosition =
                 calculateRadialPosition(
                     anchor = anchorPosition,
                     radius = with(density) { config.radius.toPx() },
-                    angle = item.angle,
+                    angle = angle,
                 )
 
             RadialMenuItemComposable(
@@ -216,6 +263,7 @@ fun RadialMenu(
                 isDestructive = item.isDestructive,
                 isSelected = selectedItemId == item.id,
                 size = config.itemSize,
+                iconSize = config.iconSize,
                 isVisible = isVisible,
                 animationDelay = index * 30, // Stagger animation
             )
@@ -250,6 +298,7 @@ private fun RadialMenuItemComposable(
     isDestructive: Boolean,
     isSelected: Boolean,
     size: Dp,
+    iconSize: Dp,
     isVisible: Boolean,
     animationDelay: Int,
 ) {
@@ -336,7 +385,7 @@ private fun RadialMenuItemComposable(
                     isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
                     else -> MaterialTheme.colorScheme.onSurface
                 },
-            modifier = Modifier.size(26.dp),
+            modifier = Modifier.size(iconSize),
         )
     }
 }

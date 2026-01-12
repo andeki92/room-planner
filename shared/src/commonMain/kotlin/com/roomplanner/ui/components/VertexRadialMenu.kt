@@ -37,14 +37,11 @@ fun VertexRadialMenu(
                 id = "set_angle",
                 icon = Icons.Default.Architecture,
                 contentDescription = "Set Angle",
-                angle = 0f, // Right of vertex
-                isDestructive = false,
             ),
             RadialMenuItem(
                 id = "delete",
                 icon = Icons.Default.Delete,
                 contentDescription = strings.deleteButton,
-                angle = 180f, // Left of vertex
                 isDestructive = true,
             ),
         )
