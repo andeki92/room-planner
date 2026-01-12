@@ -2,6 +2,7 @@ package com.roomplanner.ui.screens
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -156,11 +157,14 @@ fun FloorPlanScreen(
         },
     ) { paddingValues ->
         // Main content box - this is the coordinate space for both FAB and RadialMenu
+        // Only apply top padding (for TopAppBar), let canvas extend to screen edges
+        val canvasPadding = PaddingValues(top = paddingValues.calculateTopPadding())
+
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(paddingValues),
+                    .padding(canvasPadding),
         ) {
             if (isLoading) {
                 Box(

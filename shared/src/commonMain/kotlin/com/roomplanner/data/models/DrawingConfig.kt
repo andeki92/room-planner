@@ -132,6 +132,21 @@ data class DrawingConfig(
      */
     val selectionRadiusDp: Float = 44f,
     /**
+     * Maximum duration for a tap gesture in milliseconds.
+     * Default: 250ms - slightly longer than iOS standard (200ms) for tolerance
+     */
+    val tapMaxDurationMs: Long = 250L,
+    /**
+     * Time to trigger long press gesture in milliseconds.
+     * Default: 300ms - standard long press delay
+     */
+    val longPressDelayMs: Long = 300L,
+    /**
+     * Minimum movement in pixels to start a drag gesture.
+     * Default: 20px - lenient for mobile touch input (iOS guideline is 10pt)
+     */
+    val dragThresholdPx: Float = 20f,
+    /**
      * Visual glow ring radius for selected vertices in density-independent pixels (dp).
      * Default: 12dp - visible feedback without obscuring nearby geometry
      */

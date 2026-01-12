@@ -78,7 +78,7 @@ data class ProjectDrawingState(
     /**
      * Helper: Clear selection (Phase 1.4)
      */
-    fun clearSelection() = copy(selectedVertexId = null)
+    fun clearSelection() = copy(activeVertexId = null, selectedVertexId = null)
 
     /**
      * Helper: Select vertex (Phase 1.4)

@@ -145,6 +145,13 @@ fun DrawingCanvas(
                             lineRadialMenuPosition.value = screenPos
                             lineRadialMenuLineId.value = lineId
                         },
+                        onDismissMenus = {
+                            // Dismiss all radial menus (e.g., when user starts dragging)
+                            radialMenuPosition.value = null
+                            radialMenuVertexId.value = null
+                            lineRadialMenuPosition.value = null
+                            lineRadialMenuLineId.value = null
+                        },
                         onEmptyTapped = {
                             // Dismiss radial menus if open
                             if (radialMenuPosition.value != null) {

@@ -29,13 +29,23 @@ data class GestureCallbacks(
 )
 
 /**
+ * Gesture thresholds configuration.
+ * Values come from DrawingConfig for centralized configuration.
+ */
+data class GestureThresholds(
+    val tapMaxDurationMs: Long = 250L,
+    val longPressDelayMs: Long = 300L,
+    val dragThresholdPx: Float = 20f,
+)
+
+/**
  * Detect unified gestures (tap, long press, drag).
  * This replaces detectTapGestures + detectDragGestures with a single smart detector.
  *
  * Gesture detection logic:
- * - **Tap**: Quick release (< 200ms, < 10px movement)
- * - **Long Press**: Hold ≥ 300ms with < 10px movement (fires on timeout, not release)
- * - **Drag**: Finger moves (≥ 10px), then releases
+ * - **Tap**: Quick release (< tapMaxDurationMs, < dragThresholdPx movement)
+ * - **Long Press**: Hold ≥ longPressDelayMs with < dragThresholdPx movement (fires on timeout, not release)
+ * - **Drag**: Finger moves (≥ dragThresholdPx), then releases
  *
  * Design rationale:
  * - Solves conflict between detectTapGestures and detectDragGestures
@@ -44,12 +54,15 @@ data class GestureCallbacks(
  * - Properly distinguishes tap vs drag (standard detectors can't)
  *
  * Implementation notes:
- * - Uses 10px threshold to distinguish tap from drag (iOS guideline: 10pt)
- * - Uses 200ms threshold for tap (iOS standard: 0.2s)
- * - Uses 300ms threshold for long press - fires immediately when timer expires
+ * - Thresholds configurable via GestureThresholds (from DrawingConfig)
+ * - Default: 20px drag threshold (lenient for mobile touch)
+ * - Default: 250ms tap duration, 300ms long press delay
  * - Consumes pointer events to prevent conflicts
  */
-suspend fun PointerInputScope.detectUnifiedGestures(callbacks: GestureCallbacks) {
+suspend fun PointerInputScope.detectUnifiedGestures(
+    callbacks: GestureCallbacks,
+    thresholds: GestureThresholds = GestureThresholds(),
+) {
     coroutineScope {
         awaitPointerEventScope {
             while (true) {
@@ -73,12 +86,16 @@ suspend fun PointerInputScope.detectUnifiedGestures(callbacks: GestureCallbacks)
                 // Notify press
                 launch { callbacks.onPress(downPosition) }
 
-                // Start long press timer - fires after 300ms if not cancelled
+                // Start long press timer - fires after delay if not cancelled
                 var longPressJob: Job? =
                     launch {
-                        delay(300)
+                        delay(thresholds.longPressDelayMs)
                         // Only trigger if we haven't moved much and haven't already triggered
-                        if (totalDelta.getDistance() < 10f && !isDragging && !longPressTriggered) {
+                        if (totalDelta.getDistance() <
+                            thresholds.dragThresholdPx &&
+                            !isDragging &&
+                            !longPressTriggered
+                        ) {
                             longPressTriggered = true
                             callbacks.onLongPress(lastPosition)
                         }
@@ -115,12 +132,12 @@ suspend fun PointerInputScope.detectUnifiedGestures(callbacks: GestureCallbacks)
                         // Determine gesture type based on duration and movement
                         when {
                             // Tap: Quick release, minimal movement
-                            duration < 200 && movement < 10f -> {
+                            duration < thresholds.tapMaxDurationMs && movement < thresholds.dragThresholdPx -> {
                                 launch { callbacks.onTap(upPosition) }
                             }
 
                             // Drag: Movement detected - always call onRelease to place vertex
-                            isDragging || movement >= 10f -> {
+                            isDragging || movement >= thresholds.dragThresholdPx -> {
                                 launch { callbacks.onRelease(upPosition) }
                             }
 
@@ -134,7 +151,7 @@ suspend fun PointerInputScope.detectUnifiedGestures(callbacks: GestureCallbacks)
 
                             // Edge case: Release without clear gesture (treat as tap if short)
                             else -> {
-                                if (duration < 300) {
+                                if (duration < thresholds.longPressDelayMs) {
                                     launch { callbacks.onTap(upPosition) }
                                 } else {
                                     // Held for a while but didn't move - call onRelease
@@ -154,7 +171,7 @@ suspend fun PointerInputScope.detectUnifiedGestures(callbacks: GestureCallbacks)
                             val currentPosition = change.position
 
                             // Start dragging if threshold exceeded
-                            if (!isDragging && totalDelta.getDistance() >= 10f) {
+                            if (!isDragging && totalDelta.getDistance() >= thresholds.dragThresholdPx) {
                                 isDragging = true
                                 // Cancel long press timer if we start dragging
                                 longPressJob?.cancel()

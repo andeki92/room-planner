@@ -417,9 +417,18 @@ class GeometryManager(
                             line.endVertexId != event.vertexId
                     }
 
+                // Clear activeVertexId if deleted vertex was the active one
+                val newActiveVertexId =
+                    if (drawingState.activeVertexId == event.vertexId) {
+                        null
+                    } else {
+                        drawingState.activeVertexId
+                    }
+
                 drawingState.copy(
                     vertices = remainingVertices,
                     lines = remainingLines,
+                    activeVertexId = newActiveVertexId,
                     selectedVertexId = null, // Clear selection after delete
                 )
             }

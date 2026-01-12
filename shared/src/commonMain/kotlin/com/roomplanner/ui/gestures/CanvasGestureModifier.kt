@@ -39,6 +39,7 @@ import kotlinx.coroutines.launch
  * @param onSnapHint Callback to update snap hint state
  * @param onVertexLongPress Callback when vertex is long-pressed (radial menu)
  * @param onLineLongPress Callback when line is long-pressed (radial menu)
+ * @param onDismissMenus Callback to dismiss radial menus (called when dragging starts)
  * @param onEmptyTapped Callback when empty space is tapped (close menus)
  */
 fun Modifier.canvasGestures(
@@ -50,6 +51,7 @@ fun Modifier.canvasGestures(
     onSnapHint: (SnapResultWithGuidelines?) -> Unit,
     onVertexLongPress: (vertexId: String, screenPosition: Offset) -> Unit,
     onLineLongPress: (lineId: String, screenPosition: Offset) -> Unit,
+    onDismissMenus: () -> Unit,
     onEmptyTapped: () -> Unit,
 ): Modifier =
     composed {
@@ -69,12 +71,25 @@ fun Modifier.canvasGestures(
         // Track last position for menu positioning
         val lastScreenPositionRef = remember { mutableStateOf(Offset.Zero) }
 
+        // Track if we've dismissed menus for this gesture (avoid repeated calls)
+        val menusDismissedRef = remember { mutableStateOf(false) }
+
+        // Build gesture thresholds from config
+        val gestureThresholds =
+            GestureThresholds(
+                tapMaxDurationMs = drawingState.drawingConfig.tapMaxDurationMs,
+                longPressDelayMs = drawingState.drawingConfig.longPressDelayMs,
+                dragThresholdPx = drawingState.drawingConfig.dragThresholdPx,
+            )
+
         this.pointerInput(drawingState.activeVertexId, drawingState.selectedVertexId) {
             detectUnifiedGestures(
+                thresholds = gestureThresholds,
                 callbacks =
                     GestureCallbacks(
                         onPress = { position ->
                             lastScreenPositionRef.value = position
+                            menusDismissedRef.value = false // Reset for new gesture
                             scope.launch {
                                 handler.handlePress(
                                     screenPosition = position,
@@ -89,6 +104,13 @@ fun Modifier.canvasGestures(
                         },
                         onDrag = { position, delta ->
                             lastScreenPositionRef.value = position
+
+                            // Dismiss menus on first drag event (e.g., user started moving after long press)
+                            if (!menusDismissedRef.value) {
+                                menusDismissedRef.value = true
+                                onDismissMenus()
+                            }
+
                             scope.launch {
                                 handler.handleDrag(
                                     screenPosition = position,

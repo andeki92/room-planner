@@ -20,16 +20,21 @@ import com.roomplanner.ui.utils.HitTesting
  *
  * Replaces separate DRAW/SELECT tool modes with intelligent gesture detection:
  *
- * | Gesture     | On Vertex           | On Line    | On Empty Space          |
- * |-------------|---------------------|------------|-------------------------|
- * | Tap         | Select (activate)   | (nothing)  | Place new vertex        |
- * | Drag        | Move vertex         | (nothing)  | Preview line → place    |
- * | Long Press  | Vertex radial menu  | Line menu  | (nothing)               |
+ * | Gesture     | On Vertex (no active)  | On Vertex (has active) | On Empty (no active) | On Empty (has active)   |
+ * |-------------|------------------------|------------------------|----------------------|-------------------------|
+ * | Tap         | Select (activate)      | Connect (create line)  | Place first vertex   | Deselect                |
+ * | Drag        | Move vertex            | Move vertex            | (nothing)            | Preview line → place    |
+ * | Long Press  | Vertex radial menu     | Vertex radial menu     | (nothing)            | (nothing)               |
+ *
+ * On Line:
+ * | Gesture     | Behavior               |
+ * |-------------|------------------------|
+ * | Long Press  | Line radial menu       |
  *
  * Design rationale:
- * - No mode switching required - gesture meaning depends on touch target
- * - Combines DrawToolGestureHandler + SelectToolGestureHandler logic
- * - ~70% code reduction vs two separate handlers
+ * - No mode switching required - gesture meaning depends on touch target + state
+ * - Tap to connect vertices makes closing shapes intuitive
+ * - Tap on empty deselects (drag required to place subsequent vertices)
  * - Single source of truth for gesture behavior
  */
 class UnifiedGestureHandler {
@@ -85,26 +90,12 @@ class UnifiedGestureHandler {
 
         // Pressing on empty space
         if (drawingState.activeVertexId != null) {
-            // Has active vertex - start drawing new line
+            // Has active vertex - prepare for potential line drawing
+            // Don't show preview yet - wait for drag to start (avoids flash on tap-to-deselect)
             isDrawingNewLine = true
             draggedVertexId = null
 
-            // Show preview at initial press position
-            onPreview(worldPoint)
-
-            // Calculate snap with guidelines
-            val snapResult =
-                SmartSnapSystem.calculateSnapWithGuidelines(
-                    cursorWorld = worldPoint,
-                    cursorScreen = screenPosition,
-                    drawingState = drawingState,
-                    camera = camera,
-                    density = density,
-                )
-
-            onSnapHint(if (snapResult.guidelines.isNotEmpty()) snapResult else null)
-
-            Logger.d { "→ Press on empty (has active vertex) - starting line preview" }
+            Logger.d { "→ Press on empty (has active vertex) - ready for line drawing" }
         } else {
             // No active vertex - will place first vertex on release/tap
             isDrawingNewLine = false
@@ -153,7 +144,7 @@ class UnifiedGestureHandler {
             // Update preview to follow cursor
             onPreview(worldPoint)
 
-            // Calculate snap with guidelines
+            // Calculate snap with guidelines (grid snap disabled - only smart snapping)
             val snapResult =
                 SmartSnapSystem.calculateSnapWithGuidelines(
                     cursorWorld = worldPoint,
@@ -161,6 +152,7 @@ class UnifiedGestureHandler {
                     drawingState = drawingState,
                     camera = camera,
                     density = density,
+                    enableGridSnap = false,
                 )
 
             onSnapHint(if (snapResult.guidelines.isNotEmpty()) snapResult else null)
@@ -194,7 +186,7 @@ class UnifiedGestureHandler {
                 y = currentVertex.position.y + dragWorld.y,
             )
 
-        // Calculate snap for vertex being dragged
+        // Calculate snap for vertex being dragged (grid snap disabled - only smart snapping)
         val snapResult =
             SmartSnapSystem.calculateSnapWithGuidelines(
                 cursorWorld = newPosition,
@@ -202,6 +194,7 @@ class UnifiedGestureHandler {
                 drawingState = drawingState,
                 camera = camera,
                 density = density,
+                enableGridSnap = false,
             )
 
         onSnapHint(if (snapResult.guidelines.isNotEmpty()) snapResult else null)
@@ -340,8 +333,10 @@ class UnifiedGestureHandler {
      * Handle tap (quick press-release, < 200ms, < 10px movement).
      *
      * Context-aware behavior:
-     * - On vertex: Select it (make active for drawing)
-     * - On empty space: Place new vertex
+     * - On vertex (no active): Select it (make active for drawing)
+     * - On vertex (has active): Create line to complete/connect shape
+     * - On empty space (no active): Place first vertex
+     * - On empty space (has active): Deselect active vertex
      */
     suspend fun handleTap(
         screenPosition: Offset,
@@ -352,6 +347,8 @@ class UnifiedGestureHandler {
         onPreview: (Point2?) -> Unit,
         onSnapHint: (SnapResultWithGuidelines?) -> Unit,
     ) {
+        val hasActiveVertex = drawingState.activeVertexId != null
+
         // Check if tapped on a vertex
         val tappedVertexId =
             HitTesting.findVertexAt(
@@ -363,22 +360,45 @@ class UnifiedGestureHandler {
             )
 
         if (tappedVertexId != null) {
-            // Select vertex (make it active for drawing)
-            HapticFeedback.light()
-            eventBus.emit(GeometryEvent.VertexSelected(vertexId = tappedVertexId))
-            Logger.i { "✓ Tap on vertex: $tappedVertexId (now active)" }
+            if (hasActiveVertex && tappedVertexId != drawingState.activeVertexId) {
+                // Has active vertex and tapped different vertex - create line to connect
+                val tappedVertex = drawingState.vertices[tappedVertexId]
+                if (tappedVertex != null) {
+                    HapticFeedback.light()
+                    eventBus.emit(
+                        GeometryEvent.PointPlaced(
+                            position = tappedVertex.position,
+                            snappedTo = tappedVertexId,
+                        ),
+                    )
+                    Logger.i { "✓ Tap on vertex: connected to $tappedVertexId" }
+                }
+            } else {
+                // No active vertex - select this vertex
+                HapticFeedback.light()
+                eventBus.emit(GeometryEvent.VertexSelected(vertexId = tappedVertexId))
+                Logger.i { "✓ Tap on vertex: $tappedVertexId (now active)" }
+            }
             return
         }
 
-        // Tap on empty space - place new vertex
-        placeVertex(
-            screenPosition = screenPosition,
-            drawingState = drawingState,
-            camera = camera,
-            density = density,
-            eventBus = eventBus,
-            isFromTap = true,
-        )
+        // Tap on empty space
+        if (hasActiveVertex) {
+            // Has active vertex - deselect it
+            HapticFeedback.light()
+            eventBus.emit(GeometryEvent.SelectionCleared)
+            Logger.i { "✓ Tap on empty: deselected active vertex" }
+        } else {
+            // No active vertex - place first vertex
+            placeVertex(
+                screenPosition = screenPosition,
+                drawingState = drawingState,
+                camera = camera,
+                density = density,
+                eventBus = eventBus,
+                isFromTap = true,
+            )
+        }
 
         onPreview(null)
         onSnapHint(null)
@@ -467,7 +487,10 @@ class UnifiedGestureHandler {
     ) {
         val worldPoint = CoordinateConversion.screenToWorld(screenPosition, camera)
 
-        // Calculate snap with guidelines
+        // Only enable grid snap for first vertex placement
+        val isFirstVertex = drawingState.activeVertexId == null
+
+        // Calculate snap with guidelines (grid snap only for first vertex)
         val snapResult =
             SmartSnapSystem.calculateSnapWithGuidelines(
                 cursorWorld = worldPoint,
@@ -475,6 +498,7 @@ class UnifiedGestureHandler {
                 drawingState = drawingState,
                 camera = camera,
                 density = density,
+                enableGridSnap = isFirstVertex,
             )
 
         val finalPosition =
@@ -486,7 +510,6 @@ class UnifiedGestureHandler {
 
         val snapType = if (snapResult.guidelines.isNotEmpty()) "snapped" else "exact"
         val source = if (isFromTap) "tap" else "drag"
-        val isFirstVertex = drawingState.activeVertexId == null
 
         Logger.i {
             if (isFirstVertex) {
